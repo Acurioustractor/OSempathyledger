@@ -35,6 +35,10 @@ export interface GoogleMapProps {
  * 
  * This component handles map initialization, markers, info windows,
  * and ad blocker detection.
+ * 
+ * IMPORTANT NOTE: This is an older implementation that has been modified to be compatible
+ * with the newer hooks. For newer projects, consider using ShiftsMap.tsx instead as it has
+ * a more robust implementation with better separation of concerns.
  */
 const GoogleMap: React.FC<GoogleMapProps> = ({
   shifts,
@@ -58,11 +62,11 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
   const { 
     isLoaded, 
     isLoading, 
-    loadError, 
-    isBlocked 
+    loadError 
   } = useGoogleMapsLoader();
   
-  const isAdBlocked = useAdBlockerDetection();
+  // Get ad blocker detection status
+  const { isDetected: isAdBlocked } = useAdBlockerDetection();
   // Disable ad blocker warning
   const showAdBlockerWarning = false;
   
@@ -89,7 +93,10 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
     mapInstance: mapInstanceRef.current,
     shifts,
     selectedShiftId,
-    onMarkerClick,
+    onMarkerClick: (shiftId) => {
+      const shift = shifts.find(s => s.id === shiftId || s.Id === shiftId);
+      if (shift) onMarkerClick(shift);
+    },
   });
   
   // Find the selected shift object
@@ -146,7 +153,7 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
   }
   
   // Display ad blocker warning if Google Maps is blocked
-  if (isBlocked && !adBlockerDismissed) {
+  if (isAdBlocked && !adBlockerDismissed) {
     return (
       <Box 
         ref={mapRef}

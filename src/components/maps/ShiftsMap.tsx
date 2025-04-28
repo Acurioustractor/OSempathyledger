@@ -74,7 +74,7 @@ const ShiftsMap: React.FC<ShiftsMapProps> = ({
   
   // Custom hooks
   const { isLoaded, isError, errorMessage } = useGoogleMapsLoader();
-  const isAdBlocked = useAdBlockerDetection();
+  const { isDetected: isAdBlocked } = useAdBlockerDetection();
   const showAdBlockerWarning = isAdBlocked && !adBlockerDismissed;
   const { mapRef, mapInitialized, initMap } = useMapInitializer({ isLoaded, mapContainer });
   
@@ -103,6 +103,20 @@ const ShiftsMap: React.FC<ShiftsMapProps> = ({
   }, []);
   
   // Map markers hook
+  // Create a storyCountByShift map for marker sizing
+  const storyCountByShift = React.useMemo(() => {
+    const countMap: Record<string, number> = {};
+    shifts.forEach(shift => {
+      const shiftId = shift.id || shift.Id || '';
+      if (!shiftId) return;
+      
+      countMap[shiftId] = stories.filter(story => 
+        story.shiftId === shiftId || story.ShiftId === shiftId
+      ).length;
+    });
+    return countMap;
+  }, [shifts, stories]);
+
   const { 
     createMarkers, 
     clearMarkers, 
@@ -113,8 +127,8 @@ const ShiftsMap: React.FC<ShiftsMapProps> = ({
   } = useMapMarkers({
     mapInstance,
     shifts,
-    stories,
-    selectedShiftId,
+    selectedShiftId: selectedShiftId?.toString() || null,
+    storyCountByShift,
     onMarkerClick: handleMarkerClick,
     getMarkerColor
   });
@@ -175,19 +189,8 @@ const ShiftsMap: React.FC<ShiftsMapProps> = ({
     );
   }
   
-  // If ad blocker is detected and not dismissed, show the warning
-  if (isAdBlocked && !adBlockerDismissed) {
-    return (
-      <MapContainer height={height} width={width} className={className}>
-        <Box p={4} display="flex" justifyContent="center" alignItems="center" height="100%">
-          <AdBlockerWarning 
-            onDismiss={handleDismissAdBlockerWarning}
-            onTryAnyway={handleTryMapAnyway}
-          />
-        </Box>
-      </MapContainer>
-    );
-  }
+  // Ad blocker detection is currently disabled in useAdBlockerDetection.ts, 
+  // but we'll keep the UI logic in case it's enabled again in the future
 
   return (
     <MapContainer height={height} width={width} className={className}>

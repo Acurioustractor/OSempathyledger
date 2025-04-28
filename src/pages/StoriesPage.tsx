@@ -289,9 +289,11 @@ const StoriesPage = () => {
                       <Tr key={story.id} _hover={{ bg: 'gray.50' }}>
                         <Td fontWeight="medium">
                           <Text 
+                            as="a"
                             color="blue.600" 
                             cursor="pointer"
                             onClick={() => handleStoryView(story.id)}
+                            _hover={{ textDecoration: 'underline' }}
                           >
                             {story.Title}
                           </Text>
@@ -302,12 +304,6 @@ const StoriesPage = () => {
                         </Td>
                         <Td>
                           <HStack spacing={2}>
-                            <IconButton
-                              aria-label="Edit story"
-                              icon={<EditIcon />}
-                              size="sm"
-                              onClick={() => handleEditStory(story)}
-                            />
                             <IconButton
                               aria-label="Delete story"
                               icon={<DeleteIcon />}
@@ -327,17 +323,76 @@ const StoriesPage = () => {
 
           <TabPanel p={0} pt={4}>
             {/* Map view */}
-            <MapView 
-              shifts={displayedStories.map(story => ({
-                id: story.id,
-                name: story.Title,
-                address: story.Location || '',
-                latitude: story.Latitude,
-                longitude: story.Longitude,
-                stories: story.Stories || []
-              }))} 
-              height="600px"
-            />
+            {console.log('Stories for map:', displayedStories.map(story => ({
+              id: story.id,
+              title: story.Title,
+              hasGeocode: !!story.Geocode,
+              geocode: story.Geocode,
+              hasLocation: !!(story.Latitude && story.Longitude),
+              latitude: story.Latitude,
+              longitude: story.Longitude
+            })))}
+            
+            {displayedStories.length === 0 ? (
+              <Alert status="info">
+                <AlertIcon />
+                No stories with location data found.
+              </Alert>
+            ) : (
+              <MapView 
+                shifts={displayedStories.filter(story => {
+                  // First check if there's geocode or direct coordinates
+                  if (story.Geocode || (story.Latitude && story.Longitude)) {
+                    return true;
+                  }
+                  
+                  // Then check for shift linked coordinates
+                  const hasShiftCoordinates = !!(
+                    story.ShiftDetails?.latitude && 
+                    story.ShiftDetails?.longitude
+                  );
+                  
+                  if (!hasShiftCoordinates) {
+                    console.log('Story without coordinates excluded from map:', story.id, story.Title);
+                  }
+                  
+                  return hasShiftCoordinates;
+                }).map(story => {
+                  // Extract coordinates from Geocode field if available and not already parsed
+                  let latitude = story.Latitude;
+                  let longitude = story.Longitude;
+                  
+                  if (!latitude && !longitude && story.Geocode) {
+                    try {
+                      const [lat, lng] = story.Geocode.split(',').map(s => parseFloat(s.trim()));
+                      if (!isNaN(lat) && !isNaN(lng)) {
+                        latitude = lat;
+                        longitude = lng;
+                      }
+                    } catch (e) {
+                      console.error('Failed to parse Geocode field:', story.Geocode);
+                    }
+                  }
+                  
+                  return {
+                    id: story.id,
+                    name: story.Title || 'Untitled Story',
+                    address: story.Location || '',
+                    latitude: latitude || (story.ShiftDetails?.latitude),
+                    longitude: longitude || (story.ShiftDetails?.longitude),
+                    stories: [story],
+                    storyCount: 1,
+                    // Add a color based on whether it has a theme
+                    color: story.Themes && story.Themes.length > 0 ? 'blue' : 'gray'
+                  };
+                })} 
+                height="600px"
+                onShiftSelect={(shiftId) => {
+                  // Navigate to story detail page when clicked on map
+                  navigate(`/stories/${shiftId}`);
+                }}
+              />
+            )}
           </TabPanel>
         </TabPanels>
       </Tabs>

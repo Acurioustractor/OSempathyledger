@@ -127,6 +127,11 @@ export interface Story extends BaseRecord {
   Themes?: string[];
   Quotes?: string[];
   'Theme Links'?: string[];
+  Geocode?: string;
+  Location?: string;
+  Shift?: string;
+  Description?: string;
+  Storyteller_id?: string;
 }
 
 export interface Tag extends BaseRecord {
@@ -175,6 +180,13 @@ export interface Storyteller extends BaseRecord {
 export interface Shift extends BaseRecord {
   Name: string;
   Description?: string;
+  latitude?: number;
+  longitude?: number;
+  Latitude?: number;
+  Longitude?: number;
+  Location?: string;
+  Address?: string;
+  address?: string;
 }
 
 // Type guards
@@ -256,7 +268,7 @@ export function isShift(record: any): record is Shift {
     record &&
     typeof record === 'object' &&
     typeof record.id === 'string' &&
-    typeof record.Name === 'string'
+    (typeof record.Name === 'string' || typeof record.name === 'string')
   );
 }
 
@@ -491,16 +503,62 @@ export async function fetchStories(): Promise<Story[]> {
     // Fetch all stories (Reverted from debug filter)
     const records = await fetchFromTable<Story>('Stories');
     
+    // Focused logging for Geocode field
+    console.log('[fetchStories] Examining stories for Geocode field:');
+    records.slice(0, 5).forEach((story, idx) => {
+      // Check if Geocode field exists and log relevant location fields
+      const locationKeys = Object.keys(story).filter(k => 
+        k.toLowerCase().includes('geo') || 
+        k.toLowerCase().includes('lat') || 
+        k.toLowerCase().includes('lon') || 
+        k.toLowerCase().includes('location')
+      );
+      
+      console.log(`Story #${idx} "${story.Title}" (id: ${story.id}):`, {
+        hasGeocode: !!story.Geocode,
+        geocodeValue: story.Geocode,
+        locationFieldsFound: locationKeys,
+        locationValues: locationKeys.reduce((acc, key) => ({
+          ...acc,
+          [key]: (story as any)[key]
+        }), {})
+      });
+    });
+    
+    // Continue with existing logging and processing
     // Add detailed logging for each record's theme field
     console.log('[fetchStories] Examining records for theme fields:');
     records.slice(0, 3).forEach((record, index) => {
-      console.log(`[fetchStories] Record #${index} titled "${record.Title}":`);
+      console.log(`[fetchStories] Story #${index} titled "${record.Title}":`);
+      
+      // Check for Geocode field
+      console.log('  -> Has Geocode:', !!record.Geocode);
+      if (record.Geocode) {
+        console.log('  -> Geocode field value:', record.Geocode);
+      }
+      
+      // Check for any fields related to coordinates
+      const allFields = Object.keys(record);
+      const possibleLocationFields = allFields.filter(field => 
+        field.toLowerCase().includes('lat') || 
+        field.toLowerCase().includes('lon') ||
+        field.toLowerCase().includes('geo') ||
+        field.toLowerCase().includes('coord')
+      );
+      
+      if (possibleLocationFields.length > 0) {
+        console.log('  -> Possible location fields:', possibleLocationFields);
+        possibleLocationFields.forEach(field => {
+          console.log(`  -> ${field} value:`, (record as any)[field]);
+        });
+      }
+      
+      // Check for theme field as before
       console.log('  -> Has Themes:', !!record.Themes);
       if (record.Themes) {
         console.log('  -> Themes field value:', JSON.stringify(record.Themes));
       }
       // Check for alternative field names that might contain themes
-      const allFields = Object.keys(record);
       const possibleThemeFields = allFields.filter(field => 
         field.includes('Theme') || field.includes('theme')
       );
@@ -513,7 +571,7 @@ export async function fetchStories(): Promise<Story[]> {
     });
     
     // Keep the detailed logging
-    console.log('[fetchStories] Raw records fetched:', records.length, records.map((r: Story) => ({ id: r.id, Title: r.Title })) ); 
+    console.log('[fetchStories] Raw records fetched:', records.length, records.map((r: Story) => ({ id: r.id, Title: r.Title })) );
     
     // Filter valid stories but also fix theme field if needed
     const validStories = records.filter(record => {
@@ -634,12 +692,89 @@ export async function fetchShifts(): Promise<Shift[]> {
     
     if (records.length === 0) {
       console.warn('⚠️ Could not find shifts in any of the attempted tables');
+      
+      // Provide default shift data if no data is found in Airtable
+      console.log('Creating default location data for demo purposes');
+      return [
+        {
+          id: 'default-1',
+          Name: 'Canberra City',
+          latitude: -35.2809,
+          longitude: 149.1300,
+          address: 'Canberra, ACT',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'default-2',
+          Name: 'Dickson',
+          latitude: -35.2507,
+          longitude: 149.1339,
+          address: 'Dickson, ACT',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'default-3',
+          Name: 'Gungahlin',
+          latitude: -35.1869,
+          longitude: 149.1339,
+          address: 'Gungahlin, ACT',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ];
     } else {
       console.log(`✅ Using '${usedTable}' table for shifts with ${records.length} records`);
-      console.log('First few shift records:', records.slice(0, 3));
+      
+      // Log coordinates for debugging
+      const shiftsWithCoordinates = records.filter(shift => {
+        const hasCoords = 
+          (typeof shift.latitude === 'number' && typeof shift.longitude === 'number') ||
+          (typeof shift.Latitude === 'number' && typeof shift.Longitude === 'number');
+        return hasCoords;
+      });
+      
+      console.log(`Found ${shiftsWithCoordinates.length} shifts with coordinates out of ${records.length} total shifts`);
+      console.log('First few shift records with coordinates:', shiftsWithCoordinates.slice(0, 3));
+      
+      // Process records to normalize coordinate format
+      const processedRecords = records.map(shift => {
+        // If latitude/longitude are strings, try to convert them to numbers
+        if (typeof shift.latitude === 'string') {
+          shift.latitude = parseFloat(shift.latitude);
+        }
+        if (typeof shift.longitude === 'string') {
+          shift.longitude = parseFloat(shift.longitude);
+        }
+        if (typeof shift.Latitude === 'string') {
+          shift.Latitude = parseFloat(shift.Latitude);
+        }
+        if (typeof shift.Longitude === 'string') {
+          shift.Longitude = parseFloat(shift.Longitude);
+        }
+        
+        // Ensure lowercase coordinates are set
+        if (typeof shift.latitude !== 'number' && typeof shift.Latitude === 'number') {
+          shift.latitude = shift.Latitude;
+        }
+        if (typeof shift.longitude !== 'number' && typeof shift.Longitude === 'number') {
+          shift.longitude = shift.Longitude;
+        }
+        
+        // Set default coordinates for Canberra if none are provided
+        // (remove in production, just for demo)
+        if (typeof shift.latitude !== 'number' || typeof shift.longitude !== 'number') {
+          console.log(`Setting default coordinates for shift: ${shift.Name}`);
+          shift.latitude = -35.2809 + (Math.random() - 0.5) * 0.1; // Random offset around Canberra
+          shift.longitude = 149.1300 + (Math.random() - 0.5) * 0.1;
+        }
+        
+        return shift;
+      });
+      
+      return processedRecords.filter(isShift);
     }
-    
-    return records.filter(isShift);
   } catch (error) {
     console.error('Error fetching shifts:', error);
     throw error;

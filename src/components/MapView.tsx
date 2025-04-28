@@ -13,6 +13,7 @@ interface MapViewProps {
   selectedShiftId?: string;
   className?: string;
   style?: React.CSSProperties;
+  height?: string;
 }
 
 /**
@@ -25,6 +26,7 @@ const MapView: React.FC<MapViewProps> = ({
   selectedShiftId: propSelectedShiftId,
   className,
   style,
+  height = '500px',
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedShiftId, setSelectedShiftId] = useState<string | null>(propSelectedShiftId || null);
@@ -42,10 +44,55 @@ const MapView: React.FC<MapViewProps> = ({
     }
   }, [propSelectedShiftId]);
   
-  // Filter out shifts without location data
+  // Filter out shifts without location data - with enhanced checking for coordinates
   const shiftsWithLocation = useMemo(() => {
-    // Add null check before filtering
-    return shifts?.filter(shift => shift.latitude && shift.longitude) || [];
+    console.log('Checking shifts for map:', shifts);
+    
+    if (!shifts || !Array.isArray(shifts)) {
+      console.warn('No shifts provided to MapView');
+      return [];
+    }
+    
+    return shifts.filter(shift => {
+      if (!shift) return false;
+      
+      // Check for direct latitude/longitude
+      if (typeof shift.latitude === 'number' && typeof shift.longitude === 'number') {
+        return true;
+      }
+      
+      // Check for Latitude/Longitude (PascalCase)
+      if (typeof shift.Latitude === 'number' && typeof shift.Longitude === 'number') {
+        return true;
+      }
+      
+      // Check for string lat/lng that can be parsed to numbers
+      if (typeof shift.latitude === 'string' && typeof shift.longitude === 'string') {
+        const lat = parseFloat(shift.latitude);
+        const lng = parseFloat(shift.longitude);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          // Modify the shift object to have proper numeric coordinates
+          shift.latitude = lat;
+          shift.longitude = lng;
+          return true;
+        }
+      }
+      
+      // Check for string Lat/Lng in PascalCase
+      if (typeof shift.Latitude === 'string' && typeof shift.Longitude === 'string') {
+        const lat = parseFloat(shift.Latitude);
+        const lng = parseFloat(shift.Longitude);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          // Modify the shift object to have proper numeric coordinates
+          shift.latitude = lat;
+          shift.longitude = lng;
+          return true;
+        }
+      }
+      
+      // No valid coordinates found
+      return false;
+    });
   }, [shifts]);
   
   // Filter shifts based on search term
@@ -105,7 +152,7 @@ const MapView: React.FC<MapViewProps> = ({
         selectedShiftId={selectedShiftId}
         onMarkerClick={handleMarkerClick}
         renderInfoContent={renderInfoContent}
-        style={{ height: '500px' }}
+        style={{ height: height }}
         className={className}
       />
       

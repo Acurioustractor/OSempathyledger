@@ -2,12 +2,14 @@ import { useCallback, useRef, useState } from 'react';
 import { Shift } from '../../../services/airtable';
 
 interface UseMapMarkersProps {
-  mapRef: React.MutableRefObject<google.maps.Map | null>;
+  mapRef?: React.MutableRefObject<google.maps.Map | null>;
+  mapInstance?: google.maps.Map | null;
   shifts: Shift[];
   selectedShiftId: string | null;
-  storyCountByShift: Record<string, number>;
+  stories?: any[];
+  storyCountByShift?: Record<string, number>;
   onMarkerClick: (shiftId: string) => void;
-  getMarkerColor: (storyCount: number) => string;
+  getMarkerColor?: (storyCount: number) => string;
 }
 
 interface UseMapMarkersReturn {
@@ -26,11 +28,13 @@ interface UseMapMarkersReturn {
  */
 export function useMapMarkers({
   mapRef,
+  mapInstance,
   shifts,
   selectedShiftId,
-  storyCountByShift,
+  stories = [],
+  storyCountByShift = {},
   onMarkerClick,
-  getMarkerColor
+  getMarkerColor = () => '#4285F4' // Default blue marker color
 }: UseMapMarkersProps): UseMapMarkersReturn {
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
@@ -60,7 +64,9 @@ export function useMapMarkers({
    * Create markers for all shifts
    */
   const createMarkers = useCallback(() => {
-    if (!mapRef.current || !shifts.length) return;
+    // Support either mapRef or direct mapInstance
+    const map = mapInstance || (mapRef?.current || null);
+    if (!map || !shifts.length) return;
 
     // Update loading state
     setIsLoading(true);
@@ -82,7 +88,8 @@ export function useMapMarkers({
         const shift = shifts[i];
         
         // Skip if the map has been unmounted
-        if (!mapRef.current) return;
+        const map = mapInstance || (mapRef?.current || null);
+        if (!map) return;
         
         // Handle potential property name inconsistencies with optional chaining
         const latitude = shift.latitude ?? shift.Latitude;
@@ -98,12 +105,12 @@ export function useMapMarkers({
         
         // Get marker color based on story count
         const markerColors = shift.themes ?? shift.Themes ?? ['default'];
-        const markerColor = getMarkerColor(storyCount);
+        const markerColor = typeof getMarkerColor === 'function' ? getMarkerColor(storyCount) : '#4285F4';
         
         // Create Google Maps marker
         const marker = new google.maps.Marker({
           position: { lat: latitude, lng: longitude },
-          map: mapRef.current,
+          map: map,
           title: shift.Name ?? shift.name ?? 'Unnamed location',
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
@@ -150,20 +157,21 @@ export function useMapMarkers({
     
     // Start processing in batches of 20
     processBatch(0, 20);
-  }, [shifts, selectedShiftId, storyCountByShift, mapRef, getMarkerColor, onMarkerClick, clearMarkers]);
+  }, [shifts, selectedShiftId, storyCountByShift, mapRef, mapInstance, getMarkerColor, onMarkerClick, clearMarkers]);
   
   /**
    * Center the map on a specific marker
    */
   const centerOnMarker = useCallback((markerId: string) => {
-    if (!mapRef.current || !markersRef.current.has(markerId)) return;
+    const map = mapInstance || (mapRef?.current || null);
+    if (!map || !markersRef.current.has(markerId)) return;
     
     const marker = markersRef.current.get(markerId);
     if (!marker || !marker.getPosition()) return;
     
-    mapRef.current.setCenter(marker.getPosition()!);
-    mapRef.current.setZoom(14);
-  }, [mapRef]);
+    map.setCenter(marker.getPosition()!);
+    map.setZoom(14);
+  }, [mapRef, mapInstance]);
   
   /**
    * Get the position of a marker
