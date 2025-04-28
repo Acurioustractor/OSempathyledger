@@ -15,6 +15,8 @@ import StorytellerDetailPage from './pages/StorytellerDetailPage'
 import AnalysisPage from './pages/AnalysisPage'
 import VisualisationsPage from './pages/VisualisationsPage'
 import GoogleMapsTest from './components/GoogleMapsTest'
+import ApiDebug from './pages/ApiDebug'
+import MapExamplePage from './pages/MapExamplePage'
 // NavBar and Footer are used by Layout
 import NavBar from './components/NavBar'
 import Footer from './components/Footer'
@@ -37,6 +39,8 @@ function App() {
           <Route path="/analysis" element={<AnalysisPage />} />
           <Route path="/visualisations" element={<VisualisationsPage />} />
           <Route path="/test-google-maps" element={<GoogleMapsTest />} />
+          <Route path="/api-debug" element={<ApiDebug />} />
+          <Route path="/map-examples" element={<MapExamplePage />} />
         </Routes>
       </Layout>
     </Box>

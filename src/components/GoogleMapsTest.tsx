@@ -1,180 +1,195 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Button, Heading, Text, Code, VStack, HStack, Badge, Spinner, Alert, AlertIcon, AlertTitle, AlertDescription, Divider } from '@chakra-ui/react';
-import runGoogleMapsTests, { testGoogleMapsAPI, testGoogleMapsJsAPI } from '../utils/googleMapsTest';
+import React, { useState } from 'react';
+import runGoogleMapsTests, { testGoogleMapsAPI, testGoogleMapsJsAPI, testWithNewApiKey } from '../utils/googleMapsTest';
+import { 
+  Box, 
+  Button, 
+  Heading, 
+  Text, 
+  VStack, 
+  HStack, 
+  Code, 
+  Divider, 
+  useToast,
+  Accordion,
+  AccordionItem,
+  AccordionButton,
+  AccordionPanel,
+  AccordionIcon,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription
+} from '@chakra-ui/react';
+import GoogleMapsKeyManager from './GoogleMapsKeyManager';
+import googleMapsLoader from '../services/googleMapsLoader';
 
-interface TestResult {
-  running: boolean;
-  success?: boolean;
-  error?: string;
-  details?: Record<string, any>;
-}
-
+/**
+ * A component to test Google Maps API functionality
+ */
 const GoogleMapsTest: React.FC = () => {
-  const [restApiTest, setRestApiTest] = useState<TestResult>({ running: false });
-  const [jsApiTest, setJsApiTest] = useState<TestResult>({ running: false });
-  
-  const runTests = async () => {
-    // Reset states
-    setRestApiTest({ running: true });
-    setJsApiTest({ running: true });
+  const [testResults, setTestResults] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  // Run all tests
+  const handleRunTests = async () => {
+    setIsLoading(true);
+    setError(null);
     
     try {
-      // Test REST API
-      const restResult = await testGoogleMapsAPI();
-      setRestApiTest({ 
-        running: false, 
-        success: restResult.success, 
-        error: restResult.error,
-        details: restResult.details
-      });
+      const results = await runGoogleMapsTests();
+      setTestResults(results);
       
-      // Test JavaScript API
-      const jsResult = await testGoogleMapsJsAPI();
-      setJsApiTest({ 
-        running: false, 
-        success: jsResult.success, 
-        error: jsResult.error
+      // Show toast notification with results
+      toast({
+        title: results.allTestsPassed ? 'All tests passed!' : 'Test failed',
+        description: results.allTestsPassed 
+          ? 'Google Maps API is working correctly' 
+          : 'Some tests failed. Check the results for details.',
+        status: results.allTestsPassed ? 'success' : 'error',
+        duration: 5000,
+        isClosable: true,
       });
-    } catch (error) {
-      console.error('Error running tests:', error);
-      setRestApiTest(prev => ({ ...prev, running: false, error: 'Test failed to run' }));
-      setJsApiTest(prev => ({ ...prev, running: false, error: 'Test failed to run' }));
+    } catch (err) {
+      console.error('Error running tests:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      
+      toast({
+        title: 'Error',
+        description: 'Failed to run Google Maps tests',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
-  
-  useEffect(() => {
-    // Run tests on component mount
-    runTests();
-  }, []);
-  
+
+  // Format test result as a human-readable string
+  const formatTestResult = (result: any): string => {
+    return JSON.stringify(result, null, 2);
+  };
+
   return (
-    <Box p={5} borderWidth={1} borderRadius="lg" shadow="md" bg="white">
-      <Heading size="md" mb={4}>Google Maps API Tests</Heading>
+    <Box p={6} borderWidth="1px" borderRadius="lg" maxW="800px" mx="auto" my={8}>
+      <Heading as="h1" size="lg" mb={4}>Google Maps API Test</Heading>
       
-      <VStack spacing={6} align="stretch">
-        {/* REST API Test */}
-        <Box p={4} borderWidth={1} borderRadius="md" bg="gray.50">
-          <HStack mb={2} justify="space-between">
-            <Heading size="sm">REST API Test</Heading>
-            <Badge colorScheme={
-              restApiTest.running ? 'blue' : 
-              restApiTest.success ? 'green' : 'red'
-            }>
-              {restApiTest.running ? 'Running' : 
-               restApiTest.success ? 'Success' : 'Failed'}
-            </Badge>
-          </HStack>
-          
-          {restApiTest.running ? (
-            <HStack spacing={3}>
-              <Spinner size="sm" />
-              <Text>Testing Google Maps Geocoding API...</Text>
-            </HStack>
-          ) : restApiTest.success ? (
-            <Alert status="success" variant="subtle" borderRadius="md">
-              <AlertIcon />
-              <AlertTitle>Success!</AlertTitle>
-              <AlertDescription>
-                The Google Maps REST API is accessible and your API key is valid.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <Alert status="error" variant="subtle" borderRadius="md">
-              <AlertIcon />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>
-                {restApiTest.error || 'Unknown error occurred'}
-              </AlertDescription>
-            </Alert>
-          )}
-          
-          {restApiTest.details && (
-            <Box mt={3} p={2} borderRadius="md" bg="gray.100" fontSize="sm">
-              <Text fontWeight="bold" mb={1}>API Response Details:</Text>
-              <Code display="block" whiteSpace="pre" p={2} borderRadius="md" bg="gray.700" color="white" fontSize="xs" overflowX="auto">
-                {JSON.stringify(restApiTest.details, null, 2)}
-              </Code>
-            </Box>
-          )}
-        </Box>
-        
-        {/* JavaScript API Test */}
-        <Box p={4} borderWidth={1} borderRadius="md" bg="gray.50">
-          <HStack mb={2} justify="space-between">
-            <Heading size="sm">JavaScript API Test</Heading>
-            <Badge colorScheme={
-              jsApiTest.running ? 'blue' : 
-              jsApiTest.success ? 'green' : 'red'
-            }>
-              {jsApiTest.running ? 'Running' : 
-               jsApiTest.success ? 'Success' : 'Failed'}
-            </Badge>
-          </HStack>
-          
-          {jsApiTest.running ? (
-            <HStack spacing={3}>
-              <Spinner size="sm" />
-              <Text>Testing Google Maps JavaScript API...</Text>
-            </HStack>
-          ) : jsApiTest.success ? (
-            <Alert status="success" variant="subtle" borderRadius="md">
-              <AlertIcon />
-              <AlertTitle>Success!</AlertTitle>
-              <AlertDescription>
-                The Google Maps JavaScript API loaded successfully.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <Alert status="error" variant="subtle" borderRadius="md">
-              <AlertIcon />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>
-                {jsApiTest.error || 'Unknown error occurred'}
-              </AlertDescription>
-            </Alert>
-          )}
-        </Box>
-        
-        {/* Global Status */}
-        <Box p={4} borderWidth={1} borderRadius="md" bg={
-          (restApiTest.success && jsApiTest.success) ? 'green.50' :
-          (!restApiTest.running && !jsApiTest.running) ? 'red.50' : 'blue.50'
-        }>
-          <Heading size="sm" mb={2}>Overall Status</Heading>
-          
-          {(restApiTest.running || jsApiTest.running) ? (
-            <Text>Tests in progress...</Text>
-          ) : (restApiTest.success && jsApiTest.success) ? (
-            <Text fontWeight="medium" color="green.600">
-              ✅ All tests passed! Google Maps should work correctly in your application.
-            </Text>
-          ) : (
-            <VStack align="stretch" spacing={2}>
-              <Text fontWeight="medium" color="red.600">
-                ❌ Some tests failed. Google Maps might not work correctly.
-              </Text>
-              <Divider />
-              <Heading size="xs" mt={1}>Troubleshooting Steps:</Heading>
-              <Box pl={4}>
-                <Text fontSize="sm">1. Check that your API key is correct in .env file</Text>
-                <Text fontSize="sm">2. Verify API key has proper permissions in Google Cloud Console</Text>
-                <Text fontSize="sm">3. Check network connectivity to Google Maps servers</Text>
-                <Text fontSize="sm">4. Check if ad blockers might be affecting Google Maps</Text>
+      <Text mb={4}>
+        This component tests if the Google Maps API is accessible and the API key is valid.
+      </Text>
+      
+      <Accordion allowToggle mb={6}>
+        <AccordionItem>
+          <h2>
+            <AccordionButton>
+              <Box flex="1" textAlign="left" fontWeight="bold">
+                Manage Google Maps API Key
               </Box>
-            </VStack>
-          )}
-        </Box>
-      </VStack>
+              <AccordionIcon />
+            </AccordionButton>
+          </h2>
+          <AccordionPanel pb={4}>
+            <Text mb={4}>
+              Current API Key: <Code>{googleMapsLoader.getApiKey() || '[Not Set]'}</Code>
+            </Text>
+            
+            <GoogleMapsKeyManager 
+              onKeyChanged={(newKey) => {
+                toast({
+                  title: 'API Key Updated',
+                  description: 'The Google Maps API key has been updated.',
+                  status: 'info',
+                  duration: 3000,
+                  isClosable: true,
+                });
+                
+                // Clear previous test results
+                setTestResults(null);
+              }}
+            />
+          </AccordionPanel>
+        </AccordionItem>
+      </Accordion>
       
-      <Button 
-        mt={5} 
-        colorScheme="blue" 
-        onClick={runTests}
-        isLoading={restApiTest.running || jsApiTest.running}
-        loadingText="Running Tests"
-      >
-        Run Tests Again
-      </Button>
+      <VStack spacing={4} align="stretch" mb={6}>
+        <HStack justify="center" spacing={4}>
+          <Button 
+            colorScheme="blue" 
+            onClick={handleRunTests}
+            isLoading={isLoading}
+            loadingText="Running Tests"
+          >
+            Run All Tests
+          </Button>
+        </HStack>
+
+        {error && (
+          <Alert status="error" borderRadius="md">
+            <AlertIcon />
+            <AlertTitle>Error!</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {testResults && (
+          <Box mt={4}>
+            <Heading size="md" mb={2}>Test Results</Heading>
+            
+            <Divider my={4} />
+            
+            <Box bg="gray.50" p={4} borderRadius="md" overflowX="auto">
+              <Heading size="sm" mb={2}>REST API Test</Heading>
+              <Text color={testResults.restApiTest.success ? 'green.500' : 'red.500'} fontWeight="bold">
+                {testResults.restApiTest.success ? 'Success ✅' : 'Failed ❌'}
+              </Text>
+              {testResults.restApiTest.error && (
+                <Text color="red.500" mt={2}>Error: {testResults.restApiTest.error}</Text>
+              )}
+              <Text fontSize="sm" mt={2}>
+                <pre>{formatTestResult(testResults.restApiTest)}</pre>
+              </Text>
+            </Box>
+            
+            <Divider my={4} />
+            
+            <Box bg="gray.50" p={4} borderRadius="md" overflowX="auto">
+              <Heading size="sm" mb={2}>JavaScript API Test</Heading>
+              <Text color={testResults.jsApiTest.success ? 'green.500' : 'red.500'} fontWeight="bold">
+                {testResults.jsApiTest.success ? 'Success ✅' : 'Failed ❌'}
+              </Text>
+              {testResults.jsApiTest.error && (
+                <Text color="red.500" mt={2}>Error: {testResults.jsApiTest.error}</Text>
+              )}
+              <Text fontSize="sm" mt={2}>
+                <pre>{formatTestResult(testResults.jsApiTest)}</pre>
+              </Text>
+            </Box>
+            
+            <Divider my={4} />
+            
+            <Alert 
+              status={testResults.allTestsPassed ? 'success' : 'error'}
+              variant="subtle"
+              borderRadius="md"
+              mt={4}
+            >
+              <AlertIcon />
+              <Box>
+                <AlertTitle>
+                  {testResults.allTestsPassed ? 'All Tests Passed!' : 'Some Tests Failed'}
+                </AlertTitle>
+                <AlertDescription>
+                  {testResults.allTestsPassed 
+                    ? 'Google Maps API is working correctly with your API key.' 
+                    : 'Please check the test results and update your API key if needed.'}
+                </AlertDescription>
+              </Box>
+            </Alert>
+          </Box>
+        )}
+      </VStack>
     </Box>
   );
 };

@@ -7,9 +7,6 @@
 
 import googleMapsLoader from '../services/googleMapsLoader';
 
-// Get API key from environment variables
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-
 /**
  * Test if the Google Maps API is accessible and the API key is valid
  */
@@ -20,25 +17,22 @@ export async function testGoogleMapsAPI(): Promise<{
 }> {
   console.log('Testing Google Maps API accessibility...');
   
+  // Get API key from the loader
+  const apiKey = googleMapsLoader.getApiKey();
+  
   // Check if API key exists
-  if (!GOOGLE_MAPS_API_KEY) {
+  if (!apiKey) {
     console.error('Google Maps API key is missing');
     return {
       success: false,
-      error: 'API key is missing. Please set VITE_GOOGLE_MAPS_API_KEY in your environment variables.'
+      error: 'API key is missing. Please set a valid API key.'
     };
   }
-  
-  // Log masked API key for debugging (showing only first and last 4 chars)
-  const maskedKey = GOOGLE_MAPS_API_KEY.length > 8 
-    ? `${GOOGLE_MAPS_API_KEY.substring(0, 4)}...${GOOGLE_MAPS_API_KEY.substring(GOOGLE_MAPS_API_KEY.length - 4)}`
-    : '********';
-  console.log(`Using API key: ${maskedKey}`);
   
   try {
     // Test a simple geocoding request to validate the API key and access
     const testAddress = 'Sydney, Australia';
-    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(testAddress)}&key=${GOOGLE_MAPS_API_KEY}`;
+    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(testAddress)}&key=${apiKey}`;
     
     console.log(`Sending test request to Google Maps Geocoding API...`);
     const response = await fetch(geocodeUrl);
@@ -111,6 +105,42 @@ export async function testGoogleMapsJsAPI(): Promise<{
     }
   } catch (error) {
     console.error('❌ Error loading Google Maps JavaScript API:', error);
+    return {
+      success: false,
+      error: `Error: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Test using a new API key without refreshing the page
+ */
+export async function testWithNewApiKey(newApiKey: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  console.log('Testing with new API key...');
+  
+  try {
+    // Update the API key and reload the Maps API
+    await googleMapsLoader.setApiKey(newApiKey, true);
+    
+    // Run the tests with the new key
+    const restResult = await testGoogleMapsAPI();
+    const jsResult = await testGoogleMapsJsAPI();
+    
+    if (restResult.success && jsResult.success) {
+      console.log('✅ Tests passed with new API key!');
+      return { success: true };
+    } else {
+      console.error('❌ Tests failed with new API key');
+      return {
+        success: false,
+        error: restResult.error || jsResult.error
+      };
+    }
+  } catch (error) {
+    console.error('❌ Error testing with new API key:', error);
     return {
       success: false,
       error: `Error: ${error instanceof Error ? error.message : String(error)}`

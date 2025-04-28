@@ -6,9 +6,15 @@ import {
   Link, 
   Button, 
   useColorMode, 
-  useColorModeValue 
+  useColorModeValue, 
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  IconButton,
+  Text
 } from '@chakra-ui/react';
-import { MoonIcon, SunIcon } from '@chakra-ui/icons';
+import { MoonIcon, SunIcon, ChevronDownIcon } from '@chakra-ui/icons';
 
 const NavBar = () => {
   const { colorMode, toggleColorMode } = useColorMode()
@@ -29,6 +35,20 @@ const NavBar = () => {
             <Link as={RouterLink} to="/storytellers">Storytellers</Link>
             <Link as={RouterLink} to="/analysis">Analysis</Link>
             <Link as={RouterLink} to="/visualisations">Visualisations</Link>
+            
+            <Menu>
+              <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDownIcon />}>
+                Examples
+              </MenuButton>
+              <MenuList>
+                <MenuItem as={RouterLink} to="/map-examples">
+                  Map Components
+                </MenuItem>
+                <MenuItem as={RouterLink} to="/test-google-maps">
+                  Google Maps Test
+                </MenuItem>
+              </MenuList>
+            </Menu>
           </HStack>
         </HStack>
         <Flex alignItems={'center'}>

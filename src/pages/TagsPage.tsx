@@ -1,425 +1,340 @@
+import React, { useState, useEffect, useMemo } from 'react'
 import {
-  Box,
   Container,
-  Grid,
+  VStack,
+  HStack,
+  Box,
   Heading,
   Text,
-  VStack,
-  Spinner,
-  Alert,
-  AlertIcon,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
   Button,
-  useDisclosure,
   Modal,
   ModalOverlay,
   ModalContent,
   ModalHeader,
+  ModalFooter,
   ModalBody,
   ModalCloseButton,
-  HStack,
-  Input,
-  IconButton,
-  useToast,
+  useDisclosure,
+  Spinner,
+  Alert,
+  AlertIcon,
   Flex,
-  Tooltip,
-  AlertDialog,
-  AlertDialogBody,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogContent,
-  AlertDialogOverlay,
-  FormControl,
-  FormLabel,
-  FormErrorMessage,
-  Textarea,
-  ModalFooter,
-  Divider,
-  useColorModeValue,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  IconButton,
   Badge,
+  useToast,
 } from '@chakra-ui/react'
-import { useState, useEffect, useRef } from 'react'
-import { Tag, fetchTags, createTag, updateTag, deleteRecord, AirtableError } from '../services/airtable'
-import { AddIcon, DeleteIcon, EditIcon, SearchIcon } from '@chakra-ui/icons'
-import { useForm } from 'react-hook-form'
-
-interface TagFormData {
-  name: string
-  description?: string
-}
+import { AddIcon, SearchIcon, DeleteIcon, EditIcon } from '@chakra-ui/icons'
+import { deleteRecord, Tag, AirtableError } from '../services/airtable'
+import TagForm from '../components/TagForm'
+import { useNavigate } from 'react-router-dom'
+import useTagsData from '../hooks/useTagsData'
 
 const TagsPage = () => {
-  const [tags, setTags] = useState<Tag[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [displayedTags, setDisplayedTags] = useState<Tag[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [editingTag, setEditingTag] = useState<Tag | null>(null)
-  const [deleteTagId, setDeleteTagId] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  
-  const { isOpen, onOpen, onClose } = useDisclosure()
-  const { 
-    isOpen: isDeleteOpen,
-    onOpen: onDeleteOpen, 
-    onClose: onDeleteClose 
-  } = useDisclosure()
-  
-  const cancelRef = useRef<HTMLButtonElement>(null)
+  const [selectedTag, setSelectedTag] = useState<Tag | null>(null)
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<string>('Tag Name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+  const navigate = useNavigate()
   const toast = useToast()
-  const cardBg = useColorModeValue('white', 'gray.700')
-  const borderColor = useColorModeValue('gray.200', 'gray.600')
   
-  const {
-    handleSubmit,
-    register,
-    formState: { errors },
-    reset,
-  } = useForm<TagFormData>()
-
+  // Form modal disclosure
+  const { isOpen, onOpen, onClose } = useDisclosure()
+  
+  // Use the standardized data fetching hook
+  const fetchOptions = useMemo(() => ({ 
+    sort: [{ field: sortField, direction: sortDirection }] 
+  }), [sortField, sortDirection])
+  
+  const { 
+    tags, 
+    stories,
+    media,
+    isLoading, 
+    error, 
+    refetchAll: refetchTagData,
+    refetchTags 
+  } = useTagsData(fetchOptions)
+  
+  // Update displayed tags when tags from the hook change
   useEffect(() => {
-    loadTags()
-  }, [])
-
+    setDisplayedTags(tags)
+  }, [tags])
+  
+  // Filter tags based on search term
   useEffect(() => {
-    if (editingTag) {
-      reset({
-        name: editingTag.name,
-        description: editingTag.description
-      })
-    } else {
-      reset({
-        name: '',
-        description: ''
-      })
+    if (searchTerm && tags.length) {
+      const filtered = tags.filter(
+        tag => tag['Tag Name']?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              tag['Description']?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      setDisplayedTags(filtered)
+    } else if (tags.length) {
+      setDisplayedTags(tags)
     }
-  }, [editingTag, reset])
-
-  const loadTags = async () => {
-    setLoading(true)
-    setError(null)
-
+  }, [searchTerm, tags])
+  
+  // Get related stories count for a tag
+  const getRelatedStoriesCount = (tagId: string) => {
+    return stories.filter(story => story.Tags?.includes(tagId)).length
+  }
+  
+  // Get related media count for a tag
+  const getRelatedMediaCount = (tagId: string) => {
+    return media.filter(item => item.Tags?.includes(tagId)).length
+  }
+  
+  const handleAddTag = () => {
+    setSelectedTag(null)
+    onOpen()
+  }
+  
+  const handleEditTag = (tag: Tag) => {
+    setSelectedTag(tag)
+    onOpen()
+  }
+  
+  const handleDeleteClick = (id: string) => {
+    setDeleteId(id)
+    setIsDeleteConfirmOpen(true)
+  }
+  
+  const handleDeleteConfirm = async () => {
+    if (!deleteId) return
+    
     try {
-      const result = await fetchTags()
-      setTags(result)
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load tags'
-      setError(errorMessage)
-    } finally {
-      setLoading(false)
+      await deleteRecord('Tags', deleteId)
+      toast({
+        title: 'Tag deleted',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+      refetchTags() // Use the targeted refetch from the hook
+    } catch (error) {
+      console.error('Error deleting tag:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to delete tag',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      })
+    }
+    
+    setIsDeleteConfirmOpen(false)
+    setDeleteId(null)
+  }
+  
+  const handleDeleteCancel = () => {
+    setIsDeleteConfirmOpen(false)
+    setDeleteId(null)
+  }
+  
+  const handleTagSubmit = async (tagData: any) => {
+    try {
+      // The form component will handle the actual create/update operations
+      onClose()
+      refetchTags() // Use the targeted refetch from the hook
+    } catch (error) {
+      const errorMessage = error instanceof AirtableError 
+        ? `Failed to ${selectedTag ? 'update' : 'create'} tag: ${error.message}`
+        : `Failed to ${selectedTag ? 'update' : 'create'} tag`
+        
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      })
     }
   }
-
-  const handleCreateTag = (data: TagFormData) => {
-    setIsSubmitting(true)
-
-    createTag({
-      name: data.name,
-      description: data.description
-    })
-      .then(newTag => {
-        setTags(prev => [...prev, newTag])
-        onClose()
-        toast({
-          title: 'Success',
-          description: 'Tag created successfully',
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-        })
-      })
-      .catch(error => {
-        console.error('Error creating tag:', error)
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to create tag',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        })
-      })
-      .finally(() => {
-        setIsSubmitting(false)
-      })
+  
+  const handleTagView = (tagId: string) => {
+    navigate(`/tags/${tagId}`)
+  }
+  
+  const handleSort = (field: string) => {
+    if (field === sortField) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+  
+  // Determine sort indicator
+  const sortIndicator = (field: string) => {
+    if (field !== sortField) return null
+    return sortDirection === 'asc' ? '↑' : '↓'
   }
 
-  const handleEditTag = (data: TagFormData) => {
-    if (!editingTag) return
-
-    setIsSubmitting(true)
-
-    updateTag(editingTag.id, {
-      name: data.name,
-      description: data.description
-    })
-      .then(updatedTag => {
-        setTags(prev => 
-          prev.map(tag => tag.id === updatedTag.id ? updatedTag : tag)
-        )
-        setEditingTag(null)
-        onClose()
-        toast({
-          title: 'Success',
-          description: 'Tag updated successfully',
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-        })
-      })
-      .catch(error => {
-        console.error('Error updating tag:', error)
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to update tag',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        })
-      })
-      .finally(() => {
-        setIsSubmitting(false)
-      })
+  if (isLoading) {
+    return (
+      <Container maxW="container.xl" py={5}>
+        <Flex justify="center" align="center" h="50vh">
+          <Spinner size="xl" />
+        </Flex>
+      </Container>
+    )
   }
 
-  const handleDeleteTag = () => {
-    if (!deleteTagId) return
-
-    deleteRecord('Tags', deleteTagId)
-      .then(() => {
-        setTags(prev => prev.filter(tag => tag.id !== deleteTagId))
-        setDeleteTagId(null)
-        onDeleteClose()
-        toast({
-          title: 'Success',
-          description: 'Tag deleted successfully',
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-        })
-      })
-      .catch(error => {
-        console.error('Error deleting tag:', error)
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to delete tag',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        })
-      })
+  if (error) {
+    return (
+      <Container maxW="container.xl" py={5}>
+        <Alert status="error" mb={4}>
+          <AlertIcon />
+          Error loading tags: {error}
+        </Alert>
+        <Button onClick={refetchTagData} colorScheme="blue">
+          Retry
+        </Button>
+      </Container>
+    )
   }
-
-  const openAddModal = () => {
-    setEditingTag(null)
-    onOpen()
-  }
-
-  const openEditModal = (tag: Tag) => {
-    setEditingTag(tag)
-    onOpen()
-  }
-
-  const openDeleteModal = (id: string) => {
-    setDeleteTagId(id)
-    onDeleteOpen()
-  }
-
-  const filteredTags = tags.filter(tag => 
-    tag.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (tag.description && tag.description.toLowerCase().includes(searchTerm.toLowerCase()))
-  )
 
   return (
-    <Container maxW="container.xl" py={8}>
-      <VStack spacing={8} align="stretch">
-        <Flex justify="space-between" align="center">
-          <Heading size="lg">Tags</Heading>
-          <Button 
-            leftIcon={<AddIcon />} 
-            colorScheme="blue" 
-            onClick={openAddModal}
-          >
-            Add Tag
+    <Container maxW="container.xl" py={5}>
+      {/* Page header with actions */}
+      <Flex justifyContent="space-between" mb={5} flexWrap="wrap" gap={3}>
+        <Heading size="lg">Tags</Heading>
+        <HStack>
+          <InputGroup w={{ base: 'full', md: '300px' }}>
+            <InputLeftElement pointerEvents="none">
+              <SearchIcon color="gray.400" />
+            </InputLeftElement>
+            <Input
+              placeholder="Search tags..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </InputGroup>
+          <Button leftIcon={<AddIcon />} colorScheme="blue" onClick={handleAddTag}>
+            Add
           </Button>
-        </Flex>
+        </HStack>
+      </Flex>
 
-        <Flex>
-          <Input
-            placeholder="Search tags..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            width={{ base: 'full', md: '300px' }}
-            mr={4}
-          />
-          <Button 
-            onClick={loadTags} 
-            isLoading={loading}
-          >
-            Refresh
-          </Button>
-        </Flex>
-
-        {error && (
-          <Alert status="error">
-            <AlertIcon />
-            {error}
-          </Alert>
-        )}
-
-        {loading ? (
-          <Box textAlign="center" py={10}>
-            <Spinner size="xl" />
-          </Box>
-        ) : filteredTags.length === 0 ? (
-          <Box textAlign="center" py={10}>
-            <Text>No tags found</Text>
-            <Button 
-              mt={4} 
-              leftIcon={<AddIcon />} 
-              colorScheme="blue" 
-              onClick={openAddModal}
-            >
-              Add Tag
-            </Button>
-          </Box>
-        ) : (
-          <Grid 
-            templateColumns={{ 
-              base: "repeat(1, 1fr)", 
-              md: "repeat(2, 1fr)", 
-              lg: "repeat(3, 1fr)" 
-            }}
-            gap={6}
-          >
-            {filteredTags.map(tag => (
-              <Box
-                key={tag.id}
-                borderWidth="1px"
-                borderRadius="lg"
-                overflow="hidden"
-                p={5}
-                bg={cardBg}
-                borderColor={borderColor}
-                boxShadow="sm"
-                position="relative"
-                transition="all 0.2s"
-                _hover={{ shadow: "md" }}
-              >
-                <Flex justify="space-between" align="start" mb={3}>
-                  <Heading size="md" fontWeight="semibold" flex="1" mr={2}>
-                    {tag.name}
-                  </Heading>
-                  <HStack>
-                    <Tooltip label="Edit">
+      {/* Tag list */}
+      {displayedTags.length === 0 ? (
+        <Alert status="info">
+          <AlertIcon />
+          No tags found.
+        </Alert>
+      ) : (
+        <Box overflowX="auto">
+          <Table variant="simple">
+            <Thead>
+              <Tr>
+                <Th cursor="pointer" onClick={() => handleSort('Tag Name')}>
+                  Name {sortIndicator('Tag Name')}
+                </Th>
+                <Th cursor="pointer" onClick={() => handleSort('Description')}>
+                  Description {sortIndicator('Description')}
+                </Th>
+                <Th>Stories</Th>
+                <Th>Media</Th>
+                <Th>Actions</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {displayedTags.map((tag) => (
+                <Tr key={tag.id} _hover={{ bg: 'gray.50' }}>
+                  <Td fontWeight="medium">
+                    <Text 
+                      color="blue.600" 
+                      cursor="pointer"
+                      onClick={() => handleTagView(tag.id)}
+                    >
+                      {tag['Tag Name']}
+                    </Text>
+                  </Td>
+                  <Td>
+                    <Text noOfLines={2}>{tag.Description}</Text>
+                  </Td>
+                  <Td>
+                    <Badge colorScheme="blue">{getRelatedStoriesCount(tag.id)}</Badge>
+                  </Td>
+                  <Td>
+                    <Badge colorScheme="purple">{getRelatedMediaCount(tag.id)}</Badge>
+                  </Td>
+                  <Td>
+                    <HStack spacing={2}>
                       <IconButton
+                        aria-label="Edit tag"
                         icon={<EditIcon />}
-                        aria-label={`Edit ${tag.name}`}
                         size="sm"
-                        onClick={() => openEditModal(tag)}
+                        onClick={() => handleEditTag(tag)}
                       />
-                    </Tooltip>
-                    <Tooltip label="Delete">
                       <IconButton
+                        aria-label="Delete tag"
                         icon={<DeleteIcon />}
-                        aria-label={`Delete ${tag.name}`}
                         size="sm"
                         colorScheme="red"
-                        variant="ghost"
-                        onClick={() => openDeleteModal(tag.id)}
+                        onClick={() => handleDeleteClick(tag.id)}
                       />
-                    </Tooltip>
-                  </HStack>
-                </Flex>
-                
-                {tag.description && (
-                  <Text noOfLines={3} color="gray.600" fontSize="sm">
-                    {tag.description}
-                  </Text>
-                )}
-                
-                <Box mt={3}>
-                  <Badge colorScheme="green" px={2} py={1}>
-                    {tag.name}
-                  </Badge>
-                </Box>
-              </Box>
-            ))}
-          </Grid>
-        )}
-      </VStack>
+                    </HStack>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </Box>
+      )}
 
-      {/* Add/Edit Tag Modal */}
-      <Modal isOpen={isOpen} onClose={onClose}>
+      {/* Form Modal */}
+      <Modal isOpen={isOpen} onClose={onClose} size="xl">
         <ModalOverlay />
         <ModalContent>
-          <form onSubmit={handleSubmit(editingTag ? handleEditTag : handleCreateTag)}>
-            <ModalHeader>{editingTag ? 'Edit Tag' : 'Add Tag'}</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody pb={6}>
-              <FormControl isInvalid={!!errors.name} isRequired mb={4}>
-                <FormLabel>Name</FormLabel>
-                <Input
-                  placeholder="Tag name"
-                  {...register('name', {
-                    required: 'Name is required',
-                    minLength: { value: 2, message: 'Minimum length should be 2 characters' }
-                  })}
-                />
-                <FormErrorMessage>{errors.name?.message}</FormErrorMessage>
-              </FormControl>
-
-              <FormControl>
-                <FormLabel>Description</FormLabel>
-                <Textarea
-                  placeholder="Tag description (optional)"
-                  {...register('description')}
-                  rows={4}
-                />
-              </FormControl>
-            </ModalBody>
-
-            <ModalFooter>
-              <Button 
-                colorScheme="blue" 
-                mr={3} 
-                type="submit"
-                isLoading={isSubmitting}
-              >
-                {editingTag ? 'Update' : 'Create'}
-              </Button>
-              <Button onClick={onClose}>Cancel</Button>
-            </ModalFooter>
-          </form>
+          <ModalHeader>
+            {selectedTag ? 'Edit Tag' : 'Add New Tag'}
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <TagForm 
+              tag={selectedTag} 
+              onSubmit={handleTagSubmit}
+            />
+          </ModalBody>
         </ModalContent>
       </Modal>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog
-        isOpen={isDeleteOpen}
-        leastDestructiveRef={cancelRef}
-        onClose={onDeleteClose}
-      >
-        <AlertDialogOverlay>
-          <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              Delete Tag
-            </AlertDialogHeader>
-
-            <AlertDialogBody>
-              Are you sure you want to delete this tag? This action cannot be undone.
-            </AlertDialogBody>
-
-            <AlertDialogFooter>
-              <Button ref={cancelRef} onClick={onDeleteClose}>
-                Cancel
-              </Button>
-              <Button colorScheme="red" onClick={handleDeleteTag} ml={3}>
-                Delete
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
+      <Modal isOpen={isDeleteConfirmOpen} onClose={handleDeleteCancel}>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Confirm Delete</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            Are you sure you want to delete this tag? This action cannot be undone.
+            <Box mt={2} fontWeight="bold" color="red.500">
+              Note: This will not remove the tag from associated stories or media.
+            </Box>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={handleDeleteCancel}>
+              Cancel
+            </Button>
+            <Button colorScheme="red" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Container>
   )
 }
 
-export default TagsPage 
+export default TagsPage

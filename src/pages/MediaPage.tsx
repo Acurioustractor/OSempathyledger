@@ -73,7 +73,7 @@ import {
   Link,
 } from '@chakra-ui/react'
 import { useState, useEffect, useMemo, useRef, useCallback, KeyboardEvent } from 'react'
-import { Media, fetchMedia, createRecord, updateRecord, deleteRecord, FetchOptions, fetchThemes, fetchTags, Theme, Tag as TagType, createMedia, AirtableError, Storyteller, fetchStorytellers, fetchQuotes, Quote } from '../services/airtable'
+import { Media, createRecord, updateRecord, deleteRecord, FetchOptions, Theme, Tag as TagType, createMedia, AirtableError, Storyteller, Quote } from '../services/airtable'
 import MediaForm, { MediaFormData } from '../components/MediaForm'
 import { SearchIcon, AddIcon, DeleteIcon, EditIcon, ChevronDownIcon, CheckIcon, CloseIcon, ExternalLinkIcon, ChatIcon } from '@chakra-ui/icons'
 import CacheService from "../services/CacheService"
@@ -83,6 +83,8 @@ import { useInView } from 'react-intersection-observer'
 import { useForm } from 'react-hook-form'
 import { Link as RouterLink } from 'react-router-dom'
 import MediaDetailModal from "../components/MediaDetailModal"
+import useMediaData from '../hooks/useMediaData'
+import { fetchQuotes } from '../services/airtable'
 
 const MediaCard = ({ 
   media, 
@@ -395,10 +397,8 @@ interface BulkEditState {
 }
 
 const MediaPage = () => {
-  // --- HOOKS (ALL MUST BE CALLED UNCONDITIONALLY AT TOP) ---
+  // State only needed by MediaPage component
   const [mediaItems, setMediaItems] = useState<Media[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filters, setFilters] = useState<FilterState>({
     type: '',
@@ -412,10 +412,6 @@ const MediaPage = () => {
   const [sortField, setSortField] = useState<string>('File Name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
-  const [themes, setThemes] = useState<Theme[]>([])
-  const [tags, setTags] = useState<TagType[]>([])
-  const [storytellers, setStorytellers] = useState<Storyteller[]>([])
-  const [quotes, setQuotes] = useState<Quote[]>([])
   const [selectedMediaForModal, setSelectedMediaForModal] = useState<Media | null>(null)
   const [liveRegionMessage, setLiveRegionMessage] = useState('')
   const [bulkEditState, setBulkEditState] = useState<BulkEditState>({
@@ -423,6 +419,9 @@ const MediaPage = () => {
     tags: { mode: 'add', values: [] }
   })
   const [isBulkEditing, setIsBulkEditing] = useState(false)
+  const [quotes, setQuotes] = useState<Quote[]>([])
+  
+  // Disclosure hooks for modals and dialogs
   const { isOpen, onOpen, onClose } = useDisclosure() // Main Add/Edit Modal
   const { 
     isOpen: isBulkEditOpen, 
@@ -444,6 +443,7 @@ const MediaPage = () => {
     onOpen: onDetailModalOpen, 
     onClose: onDetailModalClose 
   } = useDisclosure() // Detail Modal state hooks
+  
   const [editingMedia, setEditingMedia] = useState<Media | null>(null)
   const [deleteMediaId, setDeleteMediaId] = useState<string | null>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -462,65 +462,44 @@ const MediaPage = () => {
     control: formControl 
   } = useForm<MediaFormData>() // Hooks related to the Add/Edit form
 
-  // --- CALLBACKS (useCallback) ---
-  const loadPageData = useCallback(async () => {
-    console.log("--- loadPageData started ---");
-    setLoading(true);
-    setError(null);
-    setMediaItems([]); // Clear previous results immediately
-    setThemes([]);
-    setTags([]);
-    setStorytellers([]);
-    setQuotes([]);
-    setPage(1);
-    setHasMore(false); // Assume no more pages until fetch confirms otherwise
-    setLiveRegionMessage('Loading all page data...');
+  // Use the standardized data fetching hook
+  const fetchOptions: FetchOptions = useMemo(() => ({
+    sort: [{ field: sortField, direction: sortDirection }]
+  }), [sortField, sortDirection]);
+  
+  const { 
+    media, 
+    themes, 
+    tags, 
+    storytellers, 
+    isLoading: loading, 
+    error,
+    refetchAll: loadPageData,
+    refetchMedia
+  } = useMediaData(fetchOptions);
 
+  // Fetch quotes separately as they're not included in useMediaData
+  const fetchMediaQuotes = useCallback(async () => {
     try {
-      console.log("Fetching Media, Themes, Tags, Storytellers, Quotes...");
-      const [mediaResult, themesResult, tagsResult, storytellersResult, quotesResult] = await Promise.all([
-        fetchMedia({ sort: [{ field: sortField, direction: sortDirection }] }),
-        fetchThemes(),
-        fetchTags(),
-        fetchStorytellers(),
-        fetchQuotes()
-      ]);
-      
-      console.log(`Fetched Counts - Media: ${mediaResult.length}, Themes: ${themesResult.length}, Tags: ${tagsResult.length}, Storytellers: ${storytellersResult.length}, Quotes: ${quotesResult.length}`);
-
-      // Update state AFTER all promises resolved
-      setMediaItems(mediaResult); 
-      setThemes(themesResult); 
-      setTags(tagsResult);
-      setStorytellers(storytellersResult); 
-      setQuotes(quotesResult); 
-
-      setLiveRegionMessage('Page data loaded successfully.');
-
+      const quotesResult = await fetchQuotes();
+      setQuotes(quotesResult);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load page data';
-      setError(errorMessage);
-      console.error("Error loading page data:", err);
-      setLiveRegionMessage(`Error loading page data: ${errorMessage}`);
-    } finally {
-      console.log("--- loadPageData finished, setting loading to false ---");
-      setLoading(false); // Set loading false *after* state updates
+      console.error("Error loading quotes:", err);
     }
-  }, [sortField, sortDirection]);
+  }, []);
 
   // --- SIDE EFFECTS (useEffect) ---
-  // Load initial data on mount and when sort changes
+  // Set the media items from our hook data
   useEffect(() => {
-    loadPageData();
-  }, [loadPageData]); // Depend on the memoized function
-
-  useEffect(() => {
-    // This effect depends on loadPageData potentially updating mediaItems
-    if (mediaItems.length === 0 && !loading) {
-       loadPageData(); // Re-trigger load if empty after initial attempt
-    }
-  }, [loadPageData, mediaItems.length, loading]);
+    setMediaItems(media);
+  }, [media]);
   
+  // Load quotes on mount
+  useEffect(() => {
+    fetchMediaQuotes();
+  }, [fetchMediaQuotes]);
+
+  // Effect to trigger loading more if needed
   useEffect(() => {
     if (inView && hasMore && !loading) {
       setPage((p) => p + 1);
@@ -562,13 +541,112 @@ const MediaPage = () => {
   const setLoadMoreRef = useCallback((node: HTMLDivElement | null) => {
     ref(node);
   }, [ref]);
-  const selectAll = useCallback(() => { /* ... */ }, [mediaItems, selectedItems]);
-  const toggleItemSelection = useCallback((id: string) => { /* ... */ }, [selectedItems]);
-  const handleAddMedia = useCallback(async (data: Omit<Media, 'id' | 'createdTime'>) => { /* ... */ }, [onClose, toast]);
-  const handleEditMedia = useCallback(async (data: Omit<Media, 'id' | 'createdTime'>) => { /* ... */ }, [editingMedia, onClose, toast]); 
-  const handleDeleteMedia = useCallback(async (id: string) => { /* ... */ }, [toast]);
-  const handleSort = useCallback((field: string) => { /* ... */ }, [sortField, sortDirection]);
-  // Define handleKeyboardNavigation HERE
+  
+  const selectAll = useCallback(() => {
+    if (selectedItems.size === mediaItems.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(mediaItems.map(item => item.id)));
+    }
+  }, [mediaItems, selectedItems]);
+  
+  const toggleItemSelection = useCallback((id: string) => {
+    setSelectedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  }, [selectedItems]);
+  
+  const handleAddMedia = useCallback(async (data: Omit<Media, 'id' | 'createdTime'>) => {
+    setIsSubmitting(true);
+    try {
+      await createMedia(data);
+      toast({
+        title: "Media created",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      onClose();
+      refetchMedia(); // Use the targeted refetch from the hook
+    } catch (error) {
+      const errorMessage = error instanceof AirtableError 
+        ? `Failed to create media: ${error.message}`
+        : 'Failed to create media';
+      toast({
+        title: "Error",
+        description: errorMessage,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [onClose, toast, refetchMedia]);
+  
+  const handleEditMedia = useCallback(async (data: Omit<Media, 'id' | 'createdTime'>) => {
+    if (!editingMedia) return;
+    
+    setIsSubmitting(true);
+    try {
+      await updateRecord('Media', editingMedia.id, data);
+      toast({
+        title: "Media updated",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      onClose();
+      refetchMedia(); // Use the targeted refetch from the hook
+    } catch (error) {
+      const errorMessage = error instanceof AirtableError 
+        ? `Failed to update media: ${error.message}`
+        : 'Failed to update media';
+      toast({
+        title: "Error",
+        description: errorMessage,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [editingMedia, onClose, toast, refetchMedia]);
+  
+  const handleDeleteMedia = useCallback(async (id: string) => {
+    try {
+      await deleteRecord('Media', id);
+      toast({
+        title: "Media deleted",
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      refetchMedia(); // Use the targeted refetch from the hook
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete media",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  }, [toast, refetchMedia]);
+  
+  const handleSort = useCallback((field: string) => {
+    setSortField(field);
+    setSortDirection(current => current === 'asc' ? 'desc' : 'asc');
+  }, []);
+  
+  // Define handleKeyboardNavigation
   const handleKeyboardNavigation = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
     if (!gridRef.current) return;
     const cards = Array.from(gridRef.current.querySelectorAll('[data-index]'));
@@ -601,16 +679,196 @@ const MediaPage = () => {
       e.preventDefault();
       (cards[nextIndex] as HTMLElement).focus();
     }
-  }, []); // No dependencies needed if it only reads refs/window
-  const getSelectedItemsThemes = useCallback(() => { /* ... */ }, [mediaItems, selectedItems]);
-  const getSelectedItemsTags = useCallback(() => { /* ... */ }, [mediaItems, selectedItems]);
-  const handleBulkEdit = useCallback(async () => { /* ... */ }, [onBulkEditClose, selectedItems, mediaItems, bulkEditState, toast]);
-  const resetBulkEditState = useCallback(() => { /* ... */ }, []);
-  const handleBulkDelete = useCallback(async () => { /* ... */ }, [selectedItems, mediaItems, toast]);
-  const openEditModal = useCallback((media: Media | null = null) => { /* ... */ }, [onOpen]); 
-  const openDeleteDialog = useCallback((id: string) => { /* ... */ }, [onDeleteConfirmOpen]);
-  const closeDeleteDialog = useCallback(() => { /* ... */ }, [onDeleteConfirmClose]);
-  const confirmDelete = useCallback(() => { /* ... */ }, [deleteMediaId, handleDeleteMedia, closeDeleteDialog]);
+  }, []);
+  
+  const getSelectedItemsThemes = useCallback(() => {
+    if (selectedItems.size === 0) return [];
+    
+    const selectedMedia = mediaItems.filter(item => selectedItems.has(item.id));
+    
+    // Get intersection of themes
+    const themeIds = new Set<string>();
+    selectedMedia.forEach((media, index) => {
+      const mediaThemes = media.Themes || [];
+      if (index === 0) {
+        // Initialize with first media's themes
+        mediaThemes.forEach(id => themeIds.add(id));
+      } else {
+        // Keep only themes that exist in both sets
+        const currentThemes = new Set(mediaThemes);
+        Array.from(themeIds).forEach(id => {
+          if (!currentThemes.has(id)) {
+            themeIds.delete(id);
+          }
+        });
+      }
+    });
+    
+    return Array.from(themeIds);
+  }, [mediaItems, selectedItems]);
+  
+  const getSelectedItemsTags = useCallback(() => {
+    if (selectedItems.size === 0) return [];
+    
+    const selectedMedia = mediaItems.filter(item => selectedItems.has(item.id));
+    
+    // Get intersection of tags
+    const tagIds = new Set<string>();
+    selectedMedia.forEach((media, index) => {
+      const mediaTags = media.Tags || [];
+      if (index === 0) {
+        // Initialize with first media's tags
+        mediaTags.forEach(id => tagIds.add(id));
+      } else {
+        // Keep only tags that exist in both sets
+        const currentTags = new Set(mediaTags);
+        Array.from(tagIds).forEach(id => {
+          if (!currentTags.has(id)) {
+            tagIds.delete(id);
+          }
+        });
+      }
+    });
+    
+    return Array.from(tagIds);
+  }, [mediaItems, selectedItems]);
+  
+  const handleBulkEdit = useCallback(async () => {
+    if (selectedItems.size === 0) return;
+    
+    // Get the media items to update
+    const itemsToUpdate = mediaItems.filter(item => selectedItems.has(item.id));
+    
+    // Prepare updates based on bulkEditState
+    const updates = itemsToUpdate.map(item => {
+      let themes = [...(item.Themes || [])];
+      let tags = [...(item.Tags || [])];
+      
+      // Handle themes updates
+      if (bulkEditState.themes.mode === 'replace') {
+        themes = [...bulkEditState.themes.values];
+      } else if (bulkEditState.themes.mode === 'add') {
+        // Add themes that don't already exist
+        const themesToAdd = bulkEditState.themes.values.filter(id => !themes.includes(id));
+        themes = [...themes, ...themesToAdd];
+      } else if (bulkEditState.themes.mode === 'remove') {
+        // Remove specified themes
+        themes = themes.filter(id => !bulkEditState.themes.values.includes(id));
+      }
+      
+      // Handle tags updates
+      if (bulkEditState.tags.mode === 'replace') {
+        tags = [...bulkEditState.tags.values];
+      } else if (bulkEditState.tags.mode === 'add') {
+        // Add tags that don't already exist
+        const tagsToAdd = bulkEditState.tags.values.filter(id => !tags.includes(id));
+        tags = [...tags, ...tagsToAdd];
+      } else if (bulkEditState.tags.mode === 'remove') {
+        // Remove specified tags
+        tags = tags.filter(id => !bulkEditState.tags.values.includes(id));
+      }
+      
+      return {
+        id: item.id,
+        updates: {
+          Themes: themes,
+          Tags: tags
+        }
+      };
+    });
+    
+    // Perform updates
+    try {
+      for (const { id, updates } of updates) {
+        await updateRecord('Media', id, updates);
+      }
+      
+      toast({
+        title: "Bulk update complete",
+        status: "success",
+        description: `Updated ${updates.length} items`,
+        duration: 3000,
+        isClosable: true,
+      });
+      
+      onBulkEditClose();
+      refetchMedia(); // Use the targeted refetch from the hook
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to complete bulk update",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  }, [onBulkEditClose, selectedItems, mediaItems, bulkEditState, toast, refetchMedia]);
+  
+  const resetBulkEditState = useCallback(() => {
+    setBulkEditState({
+      themes: { mode: 'add', values: [] },
+      tags: { mode: 'add', values: [] }
+    });
+  }, []);
+  
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedItems.size === 0) return;
+    
+    try {
+      const idsToDelete = Array.from(selectedItems);
+      const itemNames = mediaItems
+        .filter(item => selectedItems.has(item.id))
+        .map(item => item['File Name'])
+        .join(', ');
+      
+      for (const id of idsToDelete) {
+        await deleteRecord('Media', id);
+      }
+      
+      setSelectedItems(new Set());
+      
+      toast({
+        title: "Items deleted",
+        description: `Successfully deleted ${idsToDelete.length} items`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+      
+      refetchMedia(); // Use the targeted refetch from the hook
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete some items",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  }, [selectedItems, mediaItems, toast, refetchMedia]);
+  
+  const openEditModal = useCallback((media: Media | null = null) => {
+    setEditingMedia(media);
+    onOpen();
+  }, [onOpen]);
+  
+  const openDeleteDialog = useCallback((id: string) => {
+    setDeleteMediaId(id);
+    onDeleteConfirmOpen();
+  }, [onDeleteConfirmOpen]);
+  
+  const closeDeleteDialog = useCallback(() => {
+    setDeleteMediaId(null);
+    onDeleteConfirmClose();
+  }, [onDeleteConfirmClose]);
+  
+  const confirmDelete = useCallback(() => {
+    if (deleteMediaId) {
+      handleDeleteMedia(deleteMediaId);
+    }
+    closeDeleteDialog();
+  }, [deleteMediaId, handleDeleteMedia, closeDeleteDialog]);
+  
   const handleMediaCardClick = useCallback((media: Media) => {
     console.log("handleMediaCardClick called in MediaPage! Setting selected media:", media);
     setSelectedMediaForModal(media);

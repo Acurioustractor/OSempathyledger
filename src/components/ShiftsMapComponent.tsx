@@ -1,4 +1,10 @@
 /**
+ * @deprecated Use MapView or GoogleMap from './maps' instead.
+ * This component is maintained for backward compatibility but will be removed
+ * in a future version of the application.
+ * 
+ * All the functionality has been migrated to modular hooks and components in the maps directory.
+ * 
  * ShiftsMapComponent
  * 
  * A component that displays shifts on a Google Map.
@@ -16,6 +22,12 @@ import { createPortal } from 'react-dom';
 import { Shift } from '../services/airtable';
 import googleMapsLoader from '../services/googleMapsLoader';
 import MapContainer from './MapContainer';
+import GoogleMapsKeyManager from './GoogleMapsKeyManager';
+import { 
+  DEFAULT_MAP_CENTER, 
+  DEFAULT_MAP_ZOOM, 
+  getMissingApiKeyMessage
+} from '../config/maps';
 
 // Add type declarations for the global window object
 declare global {
@@ -26,9 +38,6 @@ declare global {
     testGoogleMapsCallback: () => void;
   }
 }
-
-// Google Maps API key should come from environment variables
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // Geocoding cache to avoid redundant API calls
 const geocodingCache: Record<string, google.maps.LatLngLiteral> = {};
@@ -311,8 +320,8 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
   const { isLoaded, loadError, retryLoading } = useGoogleMapsScript();
   const isAdBlocked = useAdBlockerDetection();
   
-  const [mapCenter, setMapCenter] = useState({ lat: -35.2809, lng: 149.1300 }); // Default to Canberra
-  const [mapZoom, setMapZoom] = useState(11);
+  const [mapCenter, setMapCenter] = useState(DEFAULT_MAP_CENTER);
+  const [mapZoom, setMapZoom] = useState(DEFAULT_MAP_ZOOM);
   const [activeMarker, setActiveMarker] = useState<string | null>(null);
   const [shiftMarkers, setShiftMarkers] = useState<ShiftMarker[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -394,8 +403,9 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
     const shift = shifts.find(s => s.id === markerId) || DEFAULT_MARKERS.find(m => m.id === markerId);
     if (!shift) return;
     
-    const name = shift.Name || shift.name || 'Unknown location';
-    const address = shift.Address || shift.address || '';
+    // Use optional chaining to safely access properties that might be named differently
+    const name = shift.Name ?? shift.name ?? 'Unknown location';
+    const address = shift.Address ?? shift.address ?? '';
     const storyCount = storyCountByShift[markerId] || 0;
     
     // Find stories for this shift - optimize with memoization if this becomes a performance issue
@@ -436,210 +446,74 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
 
   // Create markers function
   const createMarkersForMap = useCallback(() => {
-    if (!mapRef.current || !geocoderRef.current) {
-      console.error('Map or geocoder not initialized');
-      return;
-    }
+    if (!mapRef.current || !shifts.length) return;
+
+    // Clear any existing markers
+    clearMarkers();
     
-    setLoadingStatus("Creating markers...");
-    setLoadingProgress(80);
-    
-    try {
-      // Clear existing markers
-      markersRef.current.forEach(marker => marker.setMap(null));
-      markersRef.current.clear();
+    // Create map markers for each shift
+    shifts.forEach(shift => {
+      if (!mapRef.current) return;
       
-      // Clear existing clusterer
-      if (markerClustererRef.current) {
-        try {
-          markerClustererRef.current.clearMarkers();
-        } catch (e) {
-          console.warn('Error clearing marker clusterer:', e);
-          // Reset reference if we can't clear it
-          markerClustererRef.current = null;
-        }
+      // Handle potential property name inconsistencies with optional chaining
+      const latitude = shift.latitude ?? shift.Latitude;
+      const longitude = shift.longitude ?? shift.Longitude;
+      
+      if (!latitude || !longitude) {
+        console.warn('Shift missing coordinates:', shift.id, shift);
+        return;
       }
       
-      // Use default markers if no shifts data
-      const markersData = shifts && shifts.length > 0 ? shifts : DEFAULT_MARKERS;
+      // Check for stories associated with this shift
+      const storyCount = storyCountByShift[shift.id] || 0;
       
-      // Process markers in batches for better performance with large datasets
-      const processBatch = (startIndex: number, createdMarkers: google.maps.Marker[]) => {
-        const endIndex = Math.min(startIndex + MARKER_BATCH_SIZE, markersData.length);
-        const progress = Math.round(80 + (endIndex / markersData.length) * 15);
-        setLoadingProgress(progress);
-        
-        for (let i = startIndex; i < endIndex; i++) {
-          const shift = markersData[i];
-          
-          if (!shift.id || !(shift.Name || shift.name)) {
-            continue;
-          }
-          
-          // Get name and storyCount
-          const name = shift.Name || shift.name || '';
-          const storyCount = storyCountByShift[shift.id] || 0;
-          
-          // Get position
-          let position: google.maps.LatLngLiteral;
-          
-          // If default marker, use its position
-          if ('position' in shift) {
-            position = shift.position as google.maps.LatLngLiteral;
-          } else if (shift.Address && shift.Address in geocodingCache) {
-            // Use cached geocoding result if available
-            position = geocodingCache[shift.Address];
-          } else if (name in DEFAULT_LOCATIONS) {
-            // Use default location if known
-            position = DEFAULT_LOCATIONS[name];
-          } else {
-            // For simplicity, use default Canberra coordinates with deterministic offset
-            // This ensures the same shift always gets the same location
-            const hash = shift.id.split('').reduce((acc, char) => {
-              return ((acc << 5) - acc) + char.charCodeAt(0);
-            }, 0);
-            
-            position = {
-              lat: -35.2809 + (hash % 1000) / 10000,
-              lng: 149.1300 + ((hash >> 10) % 1000) / 10000
-            };
-          }
-          
-          // Create marker icon - size based on story count for visual importance
-          const icon = {
-            path: google.maps.SymbolPath.CIRCLE,
-            fillColor: getMarkerColor(storyCount || 0),
-            fillOpacity: 0.9,
-            strokeWeight: 2,
-            strokeColor: (storyCount || 0) > 0 ? '#FFFFFF' : '#A0AEC0',
-            scale: Math.min(Math.max(10, 10 + (storyCount || 0) * 1), 18),
-          };
-          
-          // Create the marker
-          const googleMarker = new google.maps.Marker({
-            position,
-            map: null, // Don't add to map directly when using clustering
-            title: name,
-            icon: icon,
-            animation: google.maps.Animation.DROP,
-            zIndex: shift.id === selectedShiftId ? 1000 : 1
-          });
-          
-          // Store marker reference
-          markersRef.current.set(shift.id, googleMarker);
-          createdMarkers.push(googleMarker);
-          
-          // Add click listener to marker
-          googleMarker.addListener('click', () => {
-            handleMarkerClick(shift.id);
-          });
-        }
-        
-        // Process next batch or finalize if done
-        if (endIndex < markersData.length) {
-          // Schedule next batch with setTimeout for better UI responsiveness
-          setTimeout(() => {
-            processBatch(endIndex, createdMarkers);
-          }, MARKER_BATCH_DELAY);
-        } else {
-          finalizeMarkers(createdMarkers);
-        }
-      };
+      // Get marker color based on story count
+      const markerColors = shift.themes ?? shift.Themes ?? ['default'];
+      const markerColor = getMarkerColor(storyCount);
       
-      // Function to finalize marker creation and apply clustering
-      const finalizeMarkers = (createdMarkers: google.maps.Marker[]) => {
-        setLoadingStatus("Finalizing map...");
-        setLoadingProgress(95);
-        
-        // Try to use MarkerClusterer if available
-        let clustererAvailable = false;
-        
-        try {
-          clustererAvailable = 
-            typeof window.markerClusterer === 'object' && 
-            window.markerClusterer !== null &&
-            typeof window.markerClusterer.MarkerClusterer === 'function';
-        } catch (e) {
-          console.warn('Error checking MarkerClusterer availability:', e);
-        }
-        
-        if (clustererAvailable && createdMarkers.length > 0 && mapRef.current) {
-          try {
-            // Create clusterer with optimized settings
-            markerClustererRef.current = new window.markerClusterer.MarkerClusterer({
-              map: mapRef.current,
-              markers: createdMarkers,
-              // Optimize clustering for better performance
-              algorithm: window.markerClusterer.SuperClusterAlgorithm 
-                ? new window.markerClusterer.SuperClusterAlgorithm({
-                    radius: 80,
-                    maxZoom: 15,
-                  }) 
-                : undefined,
-              renderer: {
-                render: ({ count, position }) => {
-                  // Create custom cluster marker
-                  return new google.maps.Marker({
-                    position,
-                    icon: {
-                      path: google.maps.SymbolPath.CIRCLE,
-                      fillColor: '#4285F4',
-                      fillOpacity: 0.9,
-                      strokeWeight: 2,
-                      strokeColor: '#FFFFFF',
-                      scale: Math.min(Math.max(15, 15 + Math.log(count) * 5), 25),
-                    },
-                    label: {
-                      text: String(count),
-                      color: 'white',
-                      fontSize: '11px',
-                      fontWeight: 'bold',
-                    },
-                    zIndex: 999,
-                    title: `Cluster of ${count} locations`,
-                  });
-                },
-              },
-            });
-            console.log('Successfully created marker clusterer');
-          } catch (err) {
-            console.error('Error creating marker clusterer:', err);
-            // Fall back to adding markers directly to the map if clusterer fails
-            createdMarkers.forEach(marker => marker.setMap(mapRef.current));
-          }
-        } else {
-          console.log('No marker clusterer available, adding markers directly to map');
-          // Fall back to adding markers directly to the map
-          createdMarkers.forEach(marker => marker.setMap(mapRef.current));
-        }
-        
-        setLoadingStatus("Map ready");
-        setLoadingProgress(100);
-        setIsLoading(false);
-        
-        // Center map on selected shift if any
-        if (selectedShiftId && markersRef.current.has(selectedShiftId)) {
-          const marker = markersRef.current.get(selectedShiftId);
-          if (marker && marker.getPosition() && mapRef.current) {
-            mapRef.current.setCenter(marker.getPosition()!);
-            mapRef.current.setZoom(13);
-            
-            // Trigger marker click to show info window
-            handleMarkerClick(selectedShiftId);
-          }
-        }
-      };
+      // Create Google Maps marker
+      const marker = new google.maps.Marker({
+        position: { lat: latitude, lng: longitude },
+        map: mapRef.current,
+        title: shift.Name ?? shift.name ?? 'Unnamed location',
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: markerColor,
+          fillOpacity: 0.9,
+          strokeWeight: 1,
+          strokeColor: '#ffffff',
+          scale: 10 + Math.min(storyCount, 5)
+        },
+        zIndex: storyCount ? (storyCount + 100) : 0, // Prioritize shifts with stories
+        optimized: false // Fixes issues with markers not appearing
+      });
       
-      // Start processing the first batch
-      processBatch(0, []);
+      // Store marker reference
+      markersRef.current.set(shift.id, marker);
       
-    } catch (err) {
-      console.error('Error creating markers:', err);
-      setError('Failed to create markers: ' + (err instanceof Error ? err.message : String(err)));
-      showErrorToast('Failed to create markers');
-      setIsLoading(false);
+      // Add click listener to marker
+      marker.addListener('click', () => {
+        handleMarkerClick(shift.id);
+      });
+    });
+    
+    // Update loading state
+    setLoadingStatus("Map ready");
+    setLoadingProgress(100);
+    setIsLoading(false);
+    
+    // Center map on selected shift if any
+    if (selectedShiftId && markersRef.current.has(selectedShiftId)) {
+      const marker = markersRef.current.get(selectedShiftId);
+      if (marker && marker.getPosition() && mapRef.current) {
+        mapRef.current.setCenter(marker.getPosition()!);
+        mapRef.current.setZoom(13);
+        
+        // Trigger marker click to show info window
+        handleMarkerClick(selectedShiftId);
+      }
     }
-  }, [shifts, selectedShiftId, storyCountByShift, getMarkerColor, showErrorToast, handleMarkerClick]);
+  }, [shifts, selectedShiftId, storyCountByShift, getMarkerColor, handleMarkerClick]);
 
   // Handler for when container is ready
   const handleContainerReady = useCallback((element: HTMLDivElement) => {
@@ -953,10 +827,10 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
     };
   }, []);
   
-  // Set error if Google Maps API key is missing
+  // Update the useEffect to use getMissingApiKeyMessage
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) {
-      setError('Google Maps API key is missing. Please set VITE_GOOGLE_MAPS_API_KEY in environment variables.');
+      setError(getMissingApiKeyMessage());
       setIsLoading(false);
     }
   }, []);
@@ -986,6 +860,25 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
       }
     }
   }, [isLoaded, mapInitialized]);
+  
+  // If API key error, show friendly message with option to update key
+  if (loadError && loadError.includes('API key')) {
+    return (
+      <Box p={6} textAlign="center">
+        <Heading size="md" mb={4} color="red.500">Google Maps API Key Error</Heading>
+        <Text mb={6}>
+          {loadError}
+        </Text>
+        
+        <GoogleMapsKeyManager 
+          onKeyChanged={() => {
+            // Retry loading after key change
+            retryLoading();
+          }}
+        />
+      </Box>
+    );
+  }
   
   // Main Return: Render the component
   if (isAdBlocked) {
@@ -1257,103 +1150,154 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
   }, [shifts, mapInitialized, isLoaded, createMarkersForMap]);
   
   return (
-    <MapContainer onContainerReady={handleContainerReady}>
-      {/* Loading overlay - show when map is initializing */}
-      {isLoading && (
-        <Box
-          position="absolute"
-          top="0"
-          left="0"
-          right="0"
-          bottom="0"
-          zIndex={10}
-          bg="rgba(255,255,255,0.8)"
-          display="flex"
-          flexDirection="column"
-          alignItems="center"
-          justifyContent="center"
-          p={4}
-        >
-          <Spinner size="xl" color="blue.500" thickness="4px" mb={4} />
-          <Text mb={2} fontWeight="medium">{loadingStatus}</Text>
-          <Progress 
-            value={loadingProgress} 
-            width="80%" 
-            colorScheme="blue" 
-            borderRadius="md" 
-            size="sm" 
-            mb={2} 
-            hasStripe
-            isAnimated
-          />
-          <Text fontSize="xs" color="gray.500" mb={2}>{loadingProgress}%</Text>
-        </Box>
-      )}
+    <Box position="relative" height="100%" width="100%">
+      {/* Add compact key manager above the map */}
+      <Box position="absolute" top={2} left={2} zIndex={11}>
+        <GoogleMapsKeyManager 
+          compact={true}
+          onKeyChanged={() => {
+            // Reset map when API key changes
+            setTimeout(() => {
+              if (mapRef.current && mapContainer) {
+                console.log('Reinitializing map after API key change');
+                clearMarkers();
+                mapRef.current = null;
+                retryLoading();
+                // Wait for component to settle before initializing
+                setTimeout(() => {
+                  if (mapContainer) {
+                    handleContainerReady(mapContainer);
+                  }
+                }, 500);
+              }
+            }, 100);
+          }}
+        />
+      </Box>
       
-      {/* Map will be rendered here by Google Maps API */}
-      
-      {/* Legend */}
-      {!isLoading && mapInitialized && (
-        <Box 
-          position="absolute" 
-          right={4} 
-          top={4} 
-          bg="white" 
-          boxShadow="md" 
-          borderRadius="md"
-          p={3}
-          zIndex={10}
-        >
-          <Heading size="xs" mb={2}>Legend</Heading>
-          <Flex align="center" mb={2}>
-            <Box w={3} h={3} borderRadius="full" bg="#38A169" mr={2} />
-            <Text fontSize="sm">Many stories</Text>
-          </Flex>
-          <Flex align="center" mb={2}>
-            <Box w={3} h={3} borderRadius="full" bg="#DD6B20" mr={2} />
-            <Text fontSize="sm">Some stories</Text>
-          </Flex>
-          <Flex align="center">
-            <Box w={3} h={3} borderRadius="full" bg="#A0AEC0" mr={2} />
-            <Text fontSize="sm">No stories</Text>
-          </Flex>
-        </Box>
-      )}
-      
-      {/* Error overlay that appears for map errors but doesn't block the whole component */}
-      {error && (
-        <Box
-          position="absolute"
-          bottom={4}
-          left={4}
-          bg="red.100"
-          borderRadius="md"
-          p={3}
-          zIndex={100}
-          boxShadow="md"
-          borderWidth={1}
-          borderColor="red.300"
-        >
-          <Text fontSize="sm" color="red.700">{error}</Text>
-          <Button 
-            size="sm" 
-            colorScheme="red" 
-            mt={2} 
-            onClick={() => {
-              setError(null);
-              setIsLoading(true);
-              retryLoading();
-            }}
+      <MapContainer onContainerReady={handleContainerReady}>
+        {/* Loading overlay - show when map is initializing */}
+        {isLoading && (
+          <Box
+            position="absolute"
+            top="0"
+            left="0"
+            right="0"
+            bottom="0"
+            zIndex={10}
+            bg="rgba(255,255,255,0.8)"
+            display="flex"
+            flexDirection="column"
+            alignItems="center"
+            justifyContent="center"
+            p={4}
           >
-            Reload Map
-          </Button>
-        </Box>
-      )}
+            <Spinner size="xl" color="blue.500" thickness="4px" mb={4} />
+            <Text mb={2} fontWeight="medium">{loadingStatus}</Text>
+            <Progress 
+              value={loadingProgress} 
+              width="80%" 
+              colorScheme="blue" 
+              borderRadius="md" 
+              size="sm" 
+              mb={2} 
+              hasStripe
+              isAnimated
+            />
+            <Text fontSize="xs" color="gray.500" mb={2}>{loadingProgress}%</Text>
+          </Box>
+        )}
+        
+        {/* Map will be rendered here by Google Maps API */}
+        
+        {/* Legend */}
+        {!isLoading && mapInitialized && (
+          <Box 
+            position="absolute" 
+            right={4} 
+            top={4} 
+            bg="white"
+            boxShadow="md" 
+            borderRadius="md"
+            p={3}
+            zIndex={10}
+          >
+            <Heading size="xs" mb={2}>Legend</Heading>
+            <Flex align="center" mb={2}>
+              <Box w={3} h={3} borderRadius="full" bg="#38A169" mr={2} />
+              <Text fontSize="sm">Many stories</Text>
+            </Flex>
+            <Flex align="center" mb={2}>
+              <Box w={3} h={3} borderRadius="full" bg="#DD6B20" mr={2} />
+              <Text fontSize="sm">Some stories</Text>
+            </Flex>
+            <Flex align="center">
+              <Box w={3} h={3} borderRadius="full" bg="#A0AEC0" mr={2} />
+              <Text fontSize="sm">No stories</Text>
+            </Flex>
+          </Box>
+        )}
+        
+        {/* Error overlay that appears for map errors but doesn't block the whole component */}
+        {error && (
+          <Box 
+            position="absolute"
+            bottom={4}
+            left={4}
+            bg="red.100"
+            borderRadius="md"
+            p={3}
+            zIndex={100}
+            boxShadow="md"
+            borderWidth={1}
+            borderColor="red.300"
+          >
+            <Text fontSize="sm" color="red.700">{error}</Text>
+            <Button 
+              size="sm" 
+              colorScheme="red" 
+              mt={2} 
+              onClick={() => {
+                setError(null);
+                setIsLoading(true);
+                retryLoading();
+              }}
+            >
+              Reload Map
+            </Button>
+          </Box>
+        )}
+        
+        {/* Ad blocker warning if detected */}
+        {isAdBlocked && (
+          <Box 
+            position="absolute"
+            top={14}
+            right={4}
+            zIndex={10}
+            bg="yellow.100"
+            p={3}
+            borderRadius="md"
+            boxShadow="sm"
+            maxWidth="300px"
+            fontSize="sm"
+          >
+            <Text fontWeight="bold" mb={1}>Ad Blocker Detected</Text>
+            <Text>
+              Your ad blocker may interfere with Google Maps. If the map doesn't load,
+              try disabling your ad blocker for this site.
+            </Text>
+          </Box>
+        )}
+        
+        {/* InfoWindow portal container */}
+        {infoWindowPortalContent && infoWindowPortalRef.current && 
+          createPortal(infoWindowPortalContent, infoWindowPortalRef.current)}
+      </MapContainer>
       
-      {/* InfoWindow portal container */}
-      {infoWindowPortalContent && infoWindowPortalRef.current && 
-        createPortal(infoWindowPortalContent, infoWindowPortalRef.current)}
-    </MapContainer>
+      {/* Hidden container for InfoWindow portal content */}
+      <div id="info-window-container" style={{ display: 'none' }} />
+    </Box>
   );
 };
 

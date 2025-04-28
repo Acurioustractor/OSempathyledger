@@ -1,8 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Spinner, Text, Button } from '@chakra-ui/react';
+import { 
+  GOOGLE_MAPS_API_KEY, 
+  DEFAULT_MAP_CENTER, 
+  DEFAULT_MAP_ZOOM, 
+  getGoogleMapsApiUrl,
+  isGoogleMapsApiKeyAvailable,
+  getMissingApiKeyMessage
+} from '../config/maps';
 
-// Get the API key from environment variables
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+/**
+ * @deprecated Use GoogleMap or MapView from '../components/maps' instead.
+ * This component is maintained for backward compatibility but will be removed
+ * in a future version of the application.
+ */
 
 interface Shift {
   id: string;
@@ -31,8 +42,8 @@ interface BasicMapProps {
 const BasicMap: React.FC<BasicMapProps> = ({
   width = '100%',
   height = '500px',
-  center = { lat: -35.2809, lng: 149.1300 }, // Default to Canberra
-  zoom = 11,
+  center = DEFAULT_MAP_CENTER,
+  zoom = DEFAULT_MAP_ZOOM,
   shifts = [],
   selectedShiftId = null,
   onShiftSelect = () => {},
@@ -47,6 +58,13 @@ const BasicMap: React.FC<BasicMapProps> = ({
   
   // Function to load the Google Maps API script
   const loadGoogleMapsScript = () => {
+    // Check for API key
+    if (!isGoogleMapsApiKeyAvailable()) {
+      setIsError(true);
+      setErrorMessage(getMissingApiKeyMessage());
+      return;
+    }
+
     // Skip if already loaded
     if (window.google && window.google.maps) {
       console.log('Google Maps already loaded');
@@ -57,7 +75,7 @@ const BasicMap: React.FC<BasicMapProps> = ({
     
     console.log('Loading Google Maps script');
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&callback=initMap`;
+    script.src = `${getGoogleMapsApiUrl()}&callback=initMap`;
     script.async = true;
     script.defer = true;
     
@@ -78,61 +96,30 @@ const BasicMap: React.FC<BasicMapProps> = ({
     document.head.appendChild(script);
   };
   
-  // Initialize the map
+  // Initialize the map once the API is loaded
   const initializeMap = () => {
-    if (!mapRef.current || !window.google || !window.google.maps) {
-      console.error('Map container or Google Maps not available');
-      return;
-    }
+    if (!mapRef.current) return;
     
-    try {
-      // Check if map container has dimensions
-      const width = mapRef.current.offsetWidth;
-      const height = mapRef.current.offsetHeight;
-      
-      console.log(`Map container dimensions: ${width}x${height}`);
-      
-      if (width === 0 || height === 0) {
-        console.warn('Map container has zero dimensions');
-        // Force dimensions
-        mapRef.current.style.width = '100%';
-        mapRef.current.style.height = '500px';
-      }
-      
-      // Create the map
-      const mapOptions: google.maps.MapOptions = {
-        center,
-        zoom,
-        streetViewControl: false,
-        mapTypeControl: false,
-        fullscreenControl: true,
-        styles: [
-          {
-            featureType: "poi",
-            elementType: "labels",
-            stylers: [{ visibility: "off" }]
-          }
-        ]
-      };
-      
-      console.log('Creating Google Map instance');
-      const map = new google.maps.Map(mapRef.current, mapOptions);
-      googleMapRef.current = map;
-      
-      // Create info window
-      infoWindowRef.current = new google.maps.InfoWindow();
-      
-      // Add an event listener for when the map is loaded
-      map.addListener('idle', () => {
-        console.log('Map is fully loaded and idle');
-        createMarkers();
-      });
-      
-    } catch (error) {
-      console.error('Error initializing map:', error);
-      setIsError(true);
-      setErrorMessage(`Failed to initialize map: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    console.log('Initializing map');
+    
+    // Create the map instance
+    googleMapRef.current = new google.maps.Map(mapRef.current, {
+      center,
+      zoom,
+      disableDefaultUI: false,
+      zoomControl: true,
+      mapTypeControl: false,
+      scaleControl: true,
+      streetViewControl: false,
+      rotateControl: false,
+      fullscreenControl: true
+    });
+    
+    // Create info window
+    infoWindowRef.current = new google.maps.InfoWindow();
+    
+    // Create markers
+    createMarkers();
   };
   
   // Create markers for shifts

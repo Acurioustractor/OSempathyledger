@@ -5,8 +5,19 @@
  * All components that need Google Maps should use this service rather than loading it directly.
  */
 
-// API key from environment variables
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+import { 
+  GOOGLE_MAPS_API_KEY as DEFAULT_API_KEY, 
+  getGoogleMapsApiUrl as getDefaultGoogleMapsApiUrl, 
+  isGoogleMapsApiKeyAvailable as defaultIsGoogleMapsApiKeyAvailable,
+  getMaskedApiKey as defaultGetMaskedApiKey
+} from '../config/maps';
+
+// Interface for the GoogleMaps window object
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
 
 // Singleton pattern to ensure there's only one loader instance
 class GoogleMapsLoader {
@@ -18,9 +29,13 @@ class GoogleMapsLoader {
   private callbacks: (() => void)[] = [];
   private loadStartTime: number = 0;
   private debugMode: boolean = true; // Enable for verbose logging
+  private currentApiKey: string;
 
   private constructor() {
     this.debug('GoogleMapsLoader instance created');
+    
+    // Initialize with the default API key
+    this.currentApiKey = DEFAULT_API_KEY;
     
     // Check if Maps is already loaded
     if (this.isGoogleMapsAvailable()) {
@@ -49,18 +64,115 @@ class GoogleMapsLoader {
    * Check if Google Maps is already loaded in the window
    */
   private isGoogleMapsAvailable(): boolean {
-    try {
-      const available = Boolean(
-        window.google && 
-        window.google.maps && 
-        typeof window.google.maps.Map === 'function'
-      );
-      this.debug(`Google Maps available check: ${available}`);
-      return available;
-    } catch (e) {
-      console.error('Error checking Google Maps availability:', e);
-      return false;
+    return !!window.google && !!window.google.maps;
+  }
+
+  /**
+   * Get Google Maps
+   */
+  public async getGoogleMaps(): Promise<any> {
+    if (this.isGoogleMapsAvailable()) {
+      console.debug('Google Maps is already loaded');
+      return window.google.maps;
     }
+
+    await this.load();
+    return window.google.maps;
+  }
+
+  /**
+   * Get the current API key being used
+   */
+  public getApiKey(): string {
+    return this.currentApiKey;
+  }
+
+  /**
+   * Set a new API key and optionally reload the Maps API
+   * @param apiKey The new API key to use
+   * @param reload Whether to immediately reload the Maps API with the new key
+   * @returns Promise that resolves when the Maps API is reloaded (if reload=true)
+   */
+  public setApiKey(apiKey: string, reload: boolean = false): Promise<void> {
+    this.debug(`Setting new API key: ${this.getMaskedApiKey(apiKey)}`);
+    this.currentApiKey = apiKey;
+    
+    if (reload) {
+      return this.reloadWithNewKey();
+    }
+    return Promise.resolve();
+  }
+
+  /**
+   * Mask the API key for security in logs
+   */
+  private getMaskedApiKey(apiKey: string = this.currentApiKey): string {
+    if (!apiKey || apiKey.length === 0) {
+      return '[API KEY MISSING]';
+    }
+    
+    if (apiKey.length <= 8) {
+      return '********';
+    }
+    
+    return apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4);
+  }
+
+  /**
+   * Check if the current API key is available
+   */
+  private isApiKeyAvailable(): boolean {
+    const hasKey = Boolean(this.currentApiKey && this.currentApiKey.length > 0);
+    if (!hasKey) {
+      console.error('Google Maps API key is missing. Please set a valid API key.');
+    }
+    return hasKey;
+  }
+
+  /**
+   * Get the Google Maps API URL with the current API key
+   */
+  private getGoogleMapsApiUrl(): string {
+    return `https://maps.googleapis.com/maps/api/js?key=${this.currentApiKey}&libraries=places,geometry`;
+  }
+
+  /**
+   * Reload the Maps API with the current API key
+   * This will:
+   * 1. Remove any existing script
+   * 2. Reset the loader state
+   * 3. Load Google Maps again with the new key
+   */
+  public reloadWithNewKey(): Promise<void> {
+    this.debug('Reloading Google Maps with new API key');
+    
+    // First, reset the state
+    this.reset();
+    
+    // Remove any existing Google Maps script tags
+    const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
+    existingScripts.forEach(script => {
+      this.debug('Removing existing Google Maps script');
+      script.parentNode?.removeChild(script);
+    });
+    
+    // Also remove any Google Maps-related objects from window
+    if (window.google && window.google.maps) {
+      this.debug('Cleaning up window.google.maps');
+      try {
+        // @ts-ignore - We need to delete this property
+        delete window.google.maps;
+        if (Object.keys(window.google).length === 0) {
+          // @ts-ignore - We need to delete this property if empty
+          delete window.google;
+        }
+      } catch (e) {
+        this.debug('Error cleaning up window.google.maps:', e);
+      }
+    }
+    
+    // Load with the new key
+    return this.load();
   }
 
   /**
@@ -84,15 +196,8 @@ class GoogleMapsLoader {
       return this.loadPromise;
     }
 
-    // Double-check if Google Maps is available on window
-    if (this.isGoogleMapsAvailable()) {
-      this.debug('Google Maps found on window, marking as loaded');
-      this.isLoaded = true;
-      return Promise.resolve();
-    }
-
     // If API key is missing
-    if (!GOOGLE_MAPS_API_KEY) {
+    if (!this.isApiKeyAvailable()) {
       this.loadError = 'Google Maps API key is missing';
       console.error(this.loadError);
       return Promise.reject(new Error(this.loadError));
@@ -104,19 +209,16 @@ class GoogleMapsLoader {
     this.debug('Starting Google Maps load process');
     
     // Log API key (masked)
-    const maskedKey = GOOGLE_MAPS_API_KEY.length > 8 
-      ? `${GOOGLE_MAPS_API_KEY.substring(0, 4)}...${GOOGLE_MAPS_API_KEY.substring(GOOGLE_MAPS_API_KEY.length - 4)}`
-      : '********';
-    this.debug(`Using API key: ${maskedKey}`);
+    this.debug(`Using API key: ${this.getMaskedApiKey()}`);
 
     // Create and return the load promise
     this.loadPromise = new Promise<void>((resolve, reject) => {
       // Define a unique callback name
-      const callbackName = `googleMapsCallback_${Date.now()}`;
+      const callbackName = 'googleMapsInitialized';
       this.debug(`Created callback name: ${callbackName}`);
 
       // Set the callback function
-      window[callbackName] = () => {
+      (window as any)[callbackName] = () => {
         this.debug('Google Maps callback triggered');
         
         // Ensure Google Maps is available
@@ -139,9 +241,9 @@ class GoogleMapsLoader {
           // Clean up the callback
           try {
             this.debug('Cleaning up callback function');
-            delete window[callbackName];
+            delete (window as any)[callbackName];
           } catch (e) {
-            window[callbackName] = undefined;
+            (window as any)[callbackName] = undefined;
           }
           
           resolve();
@@ -153,9 +255,9 @@ class GoogleMapsLoader {
           
           // Clean up the callback
           try {
-            delete window[callbackName];
+            delete (window as any)[callbackName];
           } catch (e) {
-            window[callbackName] = undefined;
+            (window as any)[callbackName] = undefined;
           }
           
           reject(error);
@@ -165,7 +267,8 @@ class GoogleMapsLoader {
       // Create the script element
       this.debug('Creating script element');
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&callback=${callbackName}&v=weekly`;
+      const apiUrl = `${this.getGoogleMapsApiUrl()}&callback=${callbackName}`;
+      script.src = apiUrl;
       script.async = true;
       script.defer = true;
       
@@ -178,9 +281,9 @@ class GoogleMapsLoader {
         
         // Clean up the callback
         try {
-          delete window[callbackName];
+          delete (window as any)[callbackName];
         } catch (err) {
-          window[callbackName] = undefined;
+          (window as any)[callbackName] = undefined;
         }
         
         reject(error);
@@ -232,9 +335,9 @@ class GoogleMapsLoader {
           
           // Clean up the callback either way
           try {
-            delete window[callbackName];
+            delete (window as any)[callbackName];
           } catch (e) {
-            window[callbackName] = undefined;
+            (window as any)[callbackName] = undefined;
           }
         }
       }, TIMEOUT);
@@ -281,6 +384,16 @@ class GoogleMapsLoader {
       this.debug('Maps not loaded yet, storing callback for later');
       this.callbacks.push(callback);
     }
+  }
+
+  // Reset loader - useful for testing or recovery from errors
+  public reset(): void {
+    this.loadPromise = null;
+    this.isLoaded = false;
+    this.isLoading = false;
+    this.loadError = null;
+    this.callbacks = [];
+    this.debug('Google Maps Loader has been reset');
   }
 }
 

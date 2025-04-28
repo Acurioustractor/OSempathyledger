@@ -20,7 +20,8 @@ import {
   ListItem,
 } from '@chakra-ui/react';
 import { useState, useEffect, useMemo } from 'react';
-import { fetchThemes, Theme, fetchMedia, Media } from '../services/airtable';
+import { Theme, Media } from '../services/airtable';
+import { useAnalysisData } from '../hooks/useAirtableData';
 // Import Recharts components
 import {
   BarChart,
@@ -158,10 +159,14 @@ const StorytellerInsights = ({ media }: { media: Media[] }) => {
 
     // Process media to count storyteller appearances
     media.forEach(m => {
-      // Skip if no storytellers data
-      if (!Array.isArray(m.storytellers)) return;
+      // Standardize property name and fix inconsistency
+      const storytellers = Array.isArray(m.storytellers) ? m.storytellers : 
+                         Array.isArray(m.Storytellers) ? m.Storytellers : [];
       
-      m.storytellers.forEach(storytellerId => {
+      // Skip if no storytellers data
+      if (storytellers.length === 0) return;
+      
+      storytellers.forEach(storytellerId => {
         const existing = storytellerMap.get(storytellerId);
         if (existing) {
           existing.mediaAppearances += 1;
@@ -299,12 +304,18 @@ const ThemeRelationships = ({ themes, media }: { themes: Theme[], media: Media[]
     const mediaStorytellerMap = new Map<string, { mediaName: string, storytellers: number, themes: number }>();
     
     media.forEach(m => {
-      const storytellerCount = Array.isArray(m.Storytellers) ? m.Storytellers.length : 0;
-      const themeCount = Array.isArray(m.themes) ? m.themes.length : 0;
+      // Standardize property access with fallbacks for both casing patterns
+      const storytellers = Array.isArray(m.storytellers) ? m.storytellers : 
+                          Array.isArray(m.Storytellers) ? m.Storytellers : [];
+      const themesList = Array.isArray(m.themes) ? m.themes : [];
+      const fileName = m['File Name'] || 'Unnamed Media';
+      
+      const storytellerCount = storytellers.length;
+      const themeCount = themesList.length;
       
       if (storytellerCount > 0 || themeCount > 0) {
         mediaStorytellerMap.set(m.id, {
-          mediaName: m['File Name'],
+          mediaName: fileName,
           storytellers: storytellerCount,
           themes: themeCount
         });
@@ -454,20 +465,25 @@ const ThemeRelationships = ({ themes, media }: { themes: Theme[], media: Media[]
   );
 };
 
+// Define interfaces for mock data to improve type safety
+interface MockTheme extends Theme {
+  'Theme Name': string;
+  Description: string;
+}
+
+interface MockMedia extends Media {
+  'File Name': string;
+  themes?: string[];
+  Storytellers?: string[];
+  storytellers?: string[];
+}
+
 const AnalysisPage = () => {
   const tabBg = useColorModeValue('gray.100', 'gray.700');
   const panelBg = useColorModeValue('white', 'gray.800');
 
-  // State for data
-  const [themes, setThemes] = useState<Theme[]>([]);
-  const [media, setMedia] = useState<Media[]>([]);
-  // Add other data states later (storytellers, quotes)
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [useMockData, setUseMockData] = useState(false);
-
   // Mock data for when Airtable API fails
-  const mockThemes: Theme[] = useMemo(() => [
+  const mockThemes: MockTheme[] = useMemo(() => [
     { id: 't1', createdTime: '2023-01-01', 'Theme Name': 'Community Building', Description: 'Building connections between people' },
     { id: 't2', createdTime: '2023-01-02', 'Theme Name': 'Personal Growth', Description: 'Individual development and transformation' },
     { id: 't3', createdTime: '2023-01-03', 'Theme Name': 'Social Justice', Description: 'Addressing systemic inequalities' },
@@ -478,7 +494,7 @@ const AnalysisPage = () => {
     { id: 't8', createdTime: '2023-01-08', 'Theme Name': 'Collective Wisdom', Description: 'Shared knowledge and learning' },
   ], []);
 
-  const mockMedia: Media[] = useMemo(() => [
+  const mockMedia: MockMedia[] = useMemo(() => [
     { id: 'm1', createdTime: '2023-02-01', 'File Name': 'Interview 1', themes: ['t1', 't3', 't7'], Storytellers: ['s1', 's2'] },
     { id: 'm2', createdTime: '2023-02-02', 'File Name': 'Workshop Recording', themes: ['t2', 't5'], Storytellers: ['s3'] },
     { id: 'm3', createdTime: '2023-02-03', 'File Name': 'Community Event', themes: ['t1', 't6'], Storytellers: ['s1', 's4'] },
@@ -489,56 +505,28 @@ const AnalysisPage = () => {
     { id: 'm8', createdTime: '2023-02-08', 'File Name': 'Educational Session', themes: ['t5', 't8'], Storytellers: ['s3'] },
   ], []);
 
-  // Fetch necessary data 
-  useEffect(() => {
-    const loadAnalysisData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        console.log('[AnalysisPage] Fetching data...');
-        // Fetch themes and media in parallel
-        const [themesData, mediaData] = await Promise.all([
-          fetchThemes(),
-          fetchMedia()
-          // Add fetchStorytellers, fetchQuotes later if needed by other tabs
-        ]);
-        console.log(`[AnalysisPage] Fetched: ${themesData.length} themes, ${mediaData.length} media items.`);
-        setThemes(themesData);
-        setMedia(mediaData);
-        setUseMockData(false);
-      } catch (err) {
-        console.error("[AnalysisPage] Error loading data:", err);
-        setError(err instanceof Error ? err.message : 'Failed to load analysis data');
-        // Use mock data when API fails
-        setThemes(mockThemes);
-        setMedia(mockMedia);
-        setUseMockData(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadAnalysisData();
-  }, [mockThemes, mockMedia]);
+  // Use the custom hook instead of direct API calls
+  const { themes, media, isLoading, error, isUsingMockData } = useAnalysisData(mockThemes, mockMedia);
 
   return (
     <Container maxW="container.xl" py={8}>
       <VStack spacing={6} align="stretch">
         <Heading size="lg">Analysis Dashboard</Heading>
 
-        {loading && (
+        {isLoading && (
            <Box textAlign="center"><Spinner size="xl" /></Box>
         )}
         {error && (
           <Alert status="warning" mb={4}>
              <AlertIcon />
              <Box>
-               <Text fontWeight="bold">Data Load Issue: {error}</Text>
+               <Text fontWeight="bold">Data Load Issue: {error.message}</Text>
                <Text fontSize="sm">Using mock data for visualizations.</Text>
              </Box>
           </Alert>
         )}
 
-        {!loading && (
+        {!isLoading && (
           <Tabs variant="soft-rounded" colorScheme="blue">
             <TabList bg={tabBg} borderRadius="md" p={1}>
               <Tab>Themes Overview</Tab>
@@ -548,7 +536,7 @@ const AnalysisPage = () => {
 
             <TabPanels bg={panelBg} borderRadius="md" mt={2} shadow="sm">
               <TabPanel>
-                {useMockData && (
+                {isUsingMockData && (
                   <Alert status="info" mb={4} size="sm">
                     <AlertIcon />
                     <Text fontSize="sm">Showing mock data visualization. Connect to Airtable for real data.</Text>
@@ -557,7 +545,7 @@ const AnalysisPage = () => {
                 <ThemesOverview themes={themes} media={media} />
               </TabPanel>
               <TabPanel>
-                {useMockData && (
+                {isUsingMockData && (
                   <Alert status="info" mb={4} size="sm">
                     <AlertIcon />
                     <Text fontSize="sm">Showing mock data visualization. Connect to Airtable for real data.</Text>
@@ -566,7 +554,7 @@ const AnalysisPage = () => {
                 <StorytellerInsights media={media} />
               </TabPanel>
               <TabPanel>
-                {useMockData && (
+                {isUsingMockData && (
                   <Alert status="info" mb={4} size="sm">
                     <AlertIcon />
                     <Text fontSize="sm">Showing mock data visualization. Connect to Airtable for real data.</Text>

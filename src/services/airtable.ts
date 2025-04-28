@@ -1,4 +1,5 @@
 import axios from 'axios'
+import Airtable from 'airtable'
 
 // Constants for API access
 const API_KEY = import.meta.env.VITE_AIRTABLE_API_KEY;
@@ -6,22 +7,48 @@ const BASE_ID = import.meta.env.VITE_AIRTABLE_BASE_ID;
 const TABLE_NAME = import.meta.env.VITE_AIRTABLE_TABLE_NAME;
 const BASE_URL = `https://api.airtable.com/v0/${BASE_ID}`;
 
-// Initialize Airtable base with proper headers
-const base = axios.create({
-  baseURL: BASE_URL,
-  headers: {
-    'Authorization': `Bearer ${API_KEY}`,
-    'Content-Type': 'application/json'
+// Initialize Airtable
+const base = new Airtable({ apiKey: API_KEY }).base(BASE_ID || '');
+
+// Function to add delay between requests to avoid rate limiting
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Track rate limit usage to avoid hitting limits
+let requestCount = 0;
+let lastRequestTime = Date.now();
+const RATE_LIMIT_RESET = 1000; // 1 second in milliseconds
+const RATE_LIMIT_MAX = 5;      // Max 5 requests per second
+
+// Reset request count periodically
+setInterval(() => {
+  requestCount = 0;
+  lastRequestTime = Date.now();
+}, RATE_LIMIT_RESET);
+
+/**
+ * Helper function to handle rate limiting before making requests
+ */
+async function handleRateLimit() {
+  // If we've made too many requests recently, add a delay
+  if (requestCount >= RATE_LIMIT_MAX) {
+    const timeSinceLastReset = Date.now() - lastRequestTime;
+    if (timeSinceLastReset < RATE_LIMIT_RESET) {
+      // Wait until the next rate limit window
+      const waitTime = RATE_LIMIT_RESET - timeSinceLastReset + 50; // Add buffer
+      console.log(`Rate limit approaching, waiting ${waitTime}ms before next request`);
+      await delay(waitTime);
+      requestCount = 0;
+      lastRequestTime = Date.now();
+    }
   }
-});
+  
+  // Increment the request counter
+  requestCount++;
+}
 
 // Log configuration for debugging (remove in production)
-console.log('Airtable Config:', {
-  baseId: BASE_ID,
-  apiKeyLength: API_KEY?.length || 0,
-  baseUrl: BASE_URL,
-  tableName: TABLE_NAME
-});
+console.log(`API_KEY: ${API_KEY ? '******' + API_KEY.slice(-4) : 'missing'}`);
+console.log(`BASE_ID: ${BASE_ID || 'missing'}`);
 
 // Fetch options interface
 export interface FetchOptions {
@@ -33,12 +60,13 @@ export interface FetchOptions {
   sort?: Array<{field: string, direction: 'asc' | 'desc'}>;
   sortField?: string;
   sortDirection?: 'asc' | 'desc';
+  fields?: string[];
 }
 
 // Base types and interfaces
 export interface BaseRecord {
   id: string;
-  createdTime: string;
+  createdTime?: string;
 }
 
 export interface Media extends BaseRecord {
@@ -234,190 +262,162 @@ export function isShift(record: any): record is Shift {
 
 // Custom error class for Airtable-specific errors
 export class AirtableError extends Error {
-  status?: number;
-  details?: any;
+  status: number;
   
-  constructor(message: string, status?: number, details?: any) {
+  constructor(message: string, status: number = 500) {
     super(message);
     this.name = 'AirtableError';
     this.status = status;
-    this.details = details;
   }
 }
 
 // Base fetching function with Pagination Handling
 export const fetchFromTable = async <T>(tableName: string, options: FetchOptions = {}): Promise<T[]> => {
+  await handleRateLimit();
+  
   let allRecords: T[] = [];
-  let offset: string | undefined = undefined;
-  const maxRecords = options.maxRecords; // User-defined limit, if any
-  const view = options.view;
-  const filterByFormula = options.filterByFormula;
-  const sort = options.sort;
-
-  console.log(`Fetching ALL records from ${tableName} (handling pagination)...`);
-
-  try {
-    do {
-      const queryParams = new URLSearchParams();
-      // Add view, pageSize, filterByFormula, sort to params
-      if (view) queryParams.append('view', view);
-      if (filterByFormula) queryParams.append('filterByFormula', filterByFormula);
-      if (sort && sort.length > 0) {
-        sort.forEach((sortOption, index) => {
-          queryParams.append(`sort[${index}][field]`, sortOption.field);
-          queryParams.append(`sort[${index}][direction]`, sortOption.direction);
-        });
-      }
-      // Add offset if it exists from the previous request
-      if (offset) {
-        // Let URLSearchParams handle encoding automatically
-        queryParams.append('offset', offset);
-      }
-      // Use pageSize=100 (API default/max per page) unless overridden by user
-      queryParams.append('pageSize', (options.pageSize || 100).toString());
-
-      let url = `${tableName}`;
-      if (queryParams.toString()) {
-        url += `?${queryParams.toString()}`;
-      }
-
-      console.log(` -> Fetching page from ${tableName} with URL: ${url}`);
-      const response = await base.get(url);
-
-      if (!response.data) {
-        console.error('Invalid response format (no data):', response);
-        throw new Error('Invalid response format from Airtable');
-      }
-      
-      const records = response.data.records || [];
-      const mappedRecords = records.map((record: any) => ({
-        id: record.id,
-        createdTime: record.createdTime,
-        ...record.fields
-      }));
-      
-      allRecords = allRecords.concat(mappedRecords);
-      offset = response.data.offset; // Get offset for the next potential request
-
-      console.log(` -> Fetched ${mappedRecords.length} records this page. Total so far: ${allRecords.length}. Offset for next page: ${offset}`);
-
-      // Stop if we've reached the user-defined maxRecords limit
-      if (maxRecords && allRecords.length >= maxRecords) {
-         console.log(` -> Reached maxRecords limit (${maxRecords}).`);
-         allRecords = allRecords.slice(0, maxRecords); // Trim excess
-         offset = undefined; // Stop fetching
-      }
-
-    } while (offset); // Continue as long as Airtable provides an offset
-
-    console.log(`Finished fetching from ${tableName}. Total records retrieved: ${allRecords.length}`);
-    return allRecords;
-
-  } catch (error) {
-    // Keep existing detailed error handling
-    if (axios.isAxiosError(error)) {
-      console.error('Airtable API Error:', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          headers: error.config?.headers
-        }
-      });
-      
-      throw new AirtableError(
-        `Failed to fetch from ${tableName}: ${error.response?.data?.error?.message || error.message}`,
-        error.response?.status,
-        error.response?.data
-      );
+  
+  const processBatch = async (finalOptions: FetchOptions) => {
+    if (options.maxRecords && allRecords.length >= options.maxRecords) {
+      return;
     }
-    console.error('Unknown error during Airtable fetch:', error);
-    throw new AirtableError(`Failed to fetch from ${tableName}: Unknown error`, undefined, error);
-  }
+    
+    try {
+      // Create properly formatted select object for Airtable
+      const selectOptions: Record<string, any> = {};
+      
+      // Properly format maxRecords (number)
+      if (options.maxRecords) {
+        selectOptions.maxRecords = options.maxRecords;
+      }
+      
+      // Properly format pageSize (number)
+      if (options.pageSize) {
+        selectOptions.pageSize = options.pageSize;
+      }
+      
+      // Properly format view (string)
+      if (options.view) {
+        selectOptions.view = options.view;
+      }
+      
+      // Properly format fields (array of strings)
+      if (options.fields) {
+        if (Array.isArray(options.fields)) {
+          selectOptions.fields = options.fields;
+        } else {
+          console.warn(`[fetchFromTable] Invalid fields format for ${tableName}: fields must be an array of strings`);
+        }
+      }
+      
+      // Properly format filterByFormula (string)
+      if (options.filterByFormula) {
+        selectOptions.filterByFormula = options.filterByFormula;
+      }
+      
+      // Properly format sort (array of objects)
+      if (options.sort && Array.isArray(options.sort)) {
+        selectOptions.sort = options.sort;
+      } else if (options.sortField && options.sortDirection) {
+        // Handle legacy sort format
+        selectOptions.sort = [{ field: options.sortField, direction: options.sortDirection }];
+      }
+      
+      // Initialize query with properly formatted options
+      const query = base(tableName).select(selectOptions);
+      
+      const response = await query.all();
+      console.log(`[fetchFromTable] Successfully fetched from ${tableName}, got ${response.length} records`);
+      
+      if (response) {
+        // Map Airtable data format to our format
+        const records = response.map((record) => ({
+          id: record.id,
+          createdTime: record.createdTime,
+          ...record.fields
+        }));
+        
+        allRecords = [...allRecords, ...records];
+      }
+    } catch (error) {
+      console.error(`[fetchFromTable] Error fetching ${tableName}:`, error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          console.error('[fetchFromTable] Rate limit hit, adding delay');
+          await delay(2000);
+          return processBatch(finalOptions);
+        }
+        
+        if (error.response?.status === 404) {
+          throw new Error(`Table '${tableName}' not found`);
+        }
+      }
+      
+      throw new Error(`Failed to fetch records from ${tableName}`);
+    }
+  };
+  
+  await processBatch(options);
+  
+  // Log completion
+  console.log(`[fetchFromTable] Completed fetch from ${tableName}, returned ${allRecords.length} records`);
+  
+  return allRecords;
 };
 
 // Create a new record
 export async function createRecord<T extends BaseRecord>(tableName: string, data: Omit<T, 'id' | 'createdTime'>): Promise<T> {
+  await handleRateLimit();
+  
   try {
-    const response = await base.post(`${tableName}`, { 
-      fields: data 
-    });
+    const response = await base(tableName).create([{ fields: data }]);
     
     return {
-      id: response.data.id,
-      createdTime: response.data.createdTime,
+      id: response[0].id,
+      createdTime: response[0].createdTime,
       ...data
     } as T;
   } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error('Airtable API Error during create:', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message
-      });
-      
-      throw new AirtableError(
-        `Failed to create record in ${tableName}: ${error.response?.data?.error?.message || error.message}`,
-        error.response?.status,
-        error.response?.data
-      );
-    }
-    console.error('Unknown error during record creation:', error);
-    throw new AirtableError(`Failed to create record in ${tableName}: Unknown error`, undefined, error);
+    console.error(`Error creating record in ${tableName}:`, error);
+    throw new Error(`Failed to create record in ${tableName}`);
   }
 }
 
 // Update an existing record
 export async function updateRecord<T extends BaseRecord>(tableName: string, id: string, data: Partial<Omit<T, 'id' | 'createdTime'>>): Promise<T> {
+  await handleRateLimit();
+  
   try {
-    const response = await base.patch(`${tableName}/${id}`, {
-      fields: data
-    });
+    const response = await base(tableName).update([{ id, fields: data }]);
     
-    return response.data as T;
+    return {
+      id: response[0].id,
+      ...response[0].fields
+    } as T;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error('Airtable API Error during update:', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-        recordId: id
-      });
-      
-      throw new AirtableError(
-        `Failed to update record in ${tableName}: ${error.response?.data?.error?.message || error.message}`,
-        error.response?.status,
-        error.response?.data
-      );
+      console.error(`Error updating record in ${tableName}:`, error.response?.data || error.message);
+    } else {
+      console.error(`Error updating record in ${tableName}:`, error);
     }
-    console.error('Unknown error during record update:', error);
-    throw new AirtableError(`Failed to update record in ${tableName}: Unknown error`, undefined, error);
+    throw new Error(`Failed to update record ${id} in ${tableName}`);
   }
 }
 
 // Delete a record
 export async function deleteRecord(tableName: string, id: string): Promise<void> {
+  await handleRateLimit();
+  
   try {
-    await base.delete(`${tableName}/${id}`);
+    await base(tableName).destroy([id]);
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error('Airtable API Error during delete:', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-        recordId: id
-      });
-      
-      throw new AirtableError(
-        `Failed to delete record from ${tableName}: ${error.response?.data?.error?.message || error.message}`,
-        error.response?.status,
-        error.response?.data
-      );
+      console.error(`Error deleting record from ${tableName}:`, error.response?.data || error.message);
+    } else {
+      console.error(`Error deleting record from ${tableName}:`, error);
     }
-    console.error('Unknown error during record deletion:', error);
-    throw new AirtableError(`Failed to delete record from ${tableName}: Unknown error`, undefined, error);
+    throw new Error(`Failed to delete record ${id} from ${tableName}`);
   }
 }
 

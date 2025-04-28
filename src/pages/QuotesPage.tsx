@@ -49,20 +49,17 @@ import {
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { 
   Quote, 
-  fetchQuotes, 
   createQuote, 
   updateQuote, 
   deleteRecord, 
-  fetchThemes, 
   Theme,
   Storyteller,
-  fetchStorytellers,
-  Media,
-  fetchMedia
+  Media
 } from '../services/airtable'
 import { AddIcon, DeleteIcon, EditIcon, SearchIcon, QuestionIcon } from '@chakra-ui/icons'
 import { useForm, Controller } from 'react-hook-form'
 import ReactSelect from 'react-select'
+import { useQuotesData } from '../hooks'
 
 interface QuoteFormData {
   text: string
@@ -80,16 +77,24 @@ interface ProcessedQuote extends Quote {
 }
 
 const QuotesPage = () => {
-  const [quotes, setQuotes] = useState<Quote[]>([])
-  const [storytellers, setStorytellers] = useState<Storyteller[]>([])
-  const [mediaItems, setMediaItems] = useState<Media[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    quotes,
+    storytellers,
+    themes,
+    media: mediaItems,
+    isLoading: loading,
+    error,
+    refetchAll,
+    refetchQuotes,
+    getQuoteStorytellers,
+    getQuoteTheme,
+    getQuoteMedia
+  } = useQuotesData()
+  
   const [searchTerm, setSearchTerm] = useState('')
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null)
   const [deleteQuoteId, setDeleteQuoteId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [themes, setThemes] = useState<Theme[]>([])
   const [loadingThemes, setLoadingThemes] = useState(false)
   
   // Filter States
@@ -122,29 +127,7 @@ const QuotesPage = () => {
 
   const selectedThemes = watch('themes', [])
 
-  // Initial data load
-  useEffect(() => {
-    const loadAllData = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const [quotesData, storytellersData, mediaData] = await Promise.all([
-          fetchQuotes(),
-          fetchStorytellers(),
-          fetchMedia()
-        ])
-        setQuotes(quotesData)
-        setStorytellers(storytellersData)
-        setMediaItems(mediaData)
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to load quotes'
-        setError(errorMessage)
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadAllData()
-  }, [])
+  // Remove the initial data load effect since useQuotesData handles it
 
   useEffect(() => {
     if (editingQuote) {
@@ -199,230 +182,135 @@ const QuotesPage = () => {
         storytellerData: storyteller,
         project: project,
         location: location,
-        shift: shift,
-      } as ProcessedQuote;
-      
-      if (quotes.findIndex(q => q.id === quote.id) < 3) {
-        console.log("[QuotesPage] Processed Quote Example:", processed);
-      }
+        shift: shift
+      };
       return processed;
     });
   }, [quotes, storytellers, mediaItems]);
 
-  // Filtered quotes based on state
-  const filteredQuotes = useMemo(() => {
-    console.log("[QuotesPage] Recalculating filteredQuotes with filters:", 
-      { searchTerm, selectedStoryteller, selectedProject, selectedLocation, selectedShift });
-    
-    const result = processedQuotes.filter(quote => {
-      let include = true;
+  // Replace loadThemes with useEffect that watches themes from hook
+  // Remove the loadThemes function since themes are already loaded by useQuotesData
 
-      // --- Apply Search Term Filter --- 
-      if (searchTerm !== '') {
-        const matchesSearch = 
-          (quote['Quote Text'] && quote['Quote Text'].toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (quote.attribution && quote.attribution.toLowerCase().includes(searchTerm.toLowerCase()));
-        if (!matchesSearch) include = false;
-      }
-      
-      // --- Apply Storyteller Filter --- 
-      if (include && selectedStoryteller) {
-        const matchesStoryteller = quote.storytellerData?.id === selectedStoryteller.value;
-        if (!matchesStoryteller) include = false;
-      }
-      
-      // --- Apply Project Filter --- 
-      if (include && selectedProject) {
-        const matchesProject = quote.project === selectedProject.value;
-        if (!matchesProject) include = false;
-      }
-      
-      // --- Apply Location Filter --- 
-      if (include && selectedLocation) {
-        const matchesLocation = quote.location === selectedLocation.value;
-        if (!matchesLocation) include = false;
-      }
-      
-      // --- Apply Shift Filter --- 
-      if (include && selectedShift) {
-        // Check if the quote's derived shift matches the filter value
-        const matchesShift = quote.shift === selectedShift.value;
-        if (!matchesShift) include = false;
-      }
-      
-      // Log details for the first quote being processed if any filter is active
-      if (quote.id === processedQuotes[0]?.id && (selectedStoryteller || selectedProject || selectedLocation || selectedShift)) {
-        console.log(`[QuotesPage] Filtering Quote ID ${quote.id}:`, {
-          quoteData: { id: quote.id, text: quote['Quote Text'], attr: quote.attribution, proj: quote.project, loc: quote.location, stId: quote.storytellerData?.id },
-          filters: { story: selectedStoryteller?.value, proj: selectedProject?.value, loc: selectedLocation?.value, shift: selectedShift?.value },
-          include // Log the final decision for this quote
-        });
-      }
-      
-      return include;
-    });
-    
-    console.log(`[QuotesPage] Filtering Result: ${result.length} quotes match filters.`);
-    return result;
-  }, [processedQuotes, searchTerm, selectedStoryteller, selectedProject, selectedLocation, selectedShift]);
-
-  // Options for Select dropdowns
-  const storytellerOptions = useMemo(() => 
-    storytellers.map(s => ({ value: s.id, label: s.Name })).sort((a, b) => a.label.localeCompare(b.label)),
-    [storytellers]
-  )
-
-  const projectOptions = useMemo(() => 
-     Array.from(new Set(storytellers.map(s => s.Project).filter(Boolean))) 
-       .map(p => ({ value: p as string, label: p as string })).sort((a, b) => a.label.localeCompare(b.label)),
-    [storytellers]
-  )
-
-  const locationOptions = useMemo(() => 
-    Array.from(new Set(storytellers.map(s => s.Location).filter(Boolean)))
-      .map(l => ({ value: l as string, label: l as string })).sort((a, b) => a.label.localeCompare(b.label)),
-    [storytellers]
-  )
-
-  // Add shiftOptions generation (deriving from Media data)
-  const shiftOptions = useMemo(() => 
-    Array.from(new Set(mediaItems.map(m => m.Shift).filter(Boolean)))
-      .map(s => ({ value: s as string, label: s as string }))
-      .sort((a, b) => a.label.localeCompare(b.label)),
-    [mediaItems]
-  );
-
-  const loadThemes = async () => {
-    setLoadingThemes(true)
+  const handleCreateQuote = async (data: QuoteFormData) => {
+    setIsSubmitting(true)
     try {
-      const result = await fetchThemes()
-      setThemes(result)
-    } catch (err) {
-      console.error('Failed to load themes:', err)
+      const newQuote = {
+        'Quote Text': data.text,
+        'attribution': data.attribution,
+        'Theme': data.themes && data.themes.length > 0 ? data.themes[0] : undefined
+      }
+      
+      await createQuote(newQuote)
       toast({
-        title: 'Error',
-        description: 'Failed to load themes',
+        title: 'Quote created.',
+        description: 'The quote has been successfully created.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      })
+      
+      // Refresh quotes data
+      refetchQuotes()
+      onClose()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create quote'
+      toast({
+        title: 'Failed to create quote.',
+        description: errorMessage,
         status: 'error',
         duration: 5000,
         isClosable: true,
       })
     } finally {
-      setLoadingThemes(false)
+      setIsSubmitting(false)
     }
   }
 
-  const handleCreateQuote = (data: QuoteFormData) => {
-    setIsSubmitting(true)
-
-    createQuote({
-      'Quote Text': data.text, 
-      attribution: data.attribution,
-      Theme: data.themes?.[0],
-    })
-      .then(newQuote => {
-        setQuotes(prev => [...prev, newQuote])
-        onClose()
-        toast({
-          title: 'Success',
-          description: 'Quote created successfully',
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-        })
-      })
-      .catch(error => {
-        console.error('Error creating quote:', error)
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to create quote',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        })
-      })
-      .finally(() => {
-        setIsSubmitting(false)
-      })
-  }
-
-  const handleEditQuote = (data: QuoteFormData) => {
+  const handleEditQuote = async (data: QuoteFormData) => {
     if (!editingQuote) return
-
+    
     setIsSubmitting(true)
-
-    updateQuote(editingQuote.id, {
-      'Quote Text': data.text,
-      attribution: data.attribution,
-      Theme: data.themes?.[0],
-    })
-      .then(updatedQuote => {
-        setQuotes(prev => 
-          prev.map(quote => quote.id === updatedQuote.id ? updatedQuote : quote)
-        )
-        setEditingQuote(null)
-        onClose()
-        toast({
-          title: 'Success',
-          description: 'Quote updated successfully',
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-        })
+    try {
+      const updatedQuote = {
+        id: editingQuote.id,
+        'Quote Text': data.text,
+        'attribution': data.attribution,
+        'Theme': data.themes && data.themes.length > 0 ? data.themes[0] : undefined
+      }
+      
+      await updateQuote(updatedQuote)
+      toast({
+        title: 'Quote updated.',
+        description: 'The quote has been successfully updated.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
       })
-      .catch(error => {
-        console.error('Error updating quote:', error)
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to update quote',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        })
+      
+      // Refresh quotes data
+      refetchQuotes()
+      onClose()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update quote'
+      toast({
+        title: 'Failed to update quote.',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
       })
-      .finally(() => {
-        setIsSubmitting(false)
-      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const handleDeleteQuote = () => {
+  const handleDeleteQuote = async () => {
     if (!deleteQuoteId) return
-
-    deleteRecord('Quotes', deleteQuoteId)
-      .then(() => {
-        setQuotes(prev => prev.filter(quote => quote.id !== deleteQuoteId))
-        setDeleteQuoteId(null)
-        onDeleteClose()
-        toast({
-          title: 'Success',
-          description: 'Quote deleted successfully',
-          status: 'success',
-          duration: 3000,
-          isClosable: true,
-        })
+    
+    try {
+      await deleteRecord('Quotes', deleteQuoteId)
+      
+      toast({
+        title: 'Quote deleted.',
+        description: 'The quote has been successfully deleted.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
       })
-      .catch(error => {
-        console.error('Error deleting quote:', error)
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to delete quote',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        })
+      
+      // Refresh quotes data
+      refetchQuotes()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete quote'
+      toast({
+        title: 'Failed to delete quote.',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
       })
+    } finally {
+      onDeleteClose()
+      setDeleteQuoteId(null)
+    }
   }
 
-  const openAddModal = () => {
+  const openAddDialog = () => {
     setEditingQuote(null)
+    reset({
+      text: '',
+      attribution: '',
+      themes: [],
+    })
     onOpen()
   }
 
-  const openEditModal = (quote: Quote) => {
+  const openEditDialog = (quote: Quote) => {
     setEditingQuote(quote)
     onOpen()
   }
 
-  const openDeleteModal = (id: string) => {
+  const openDeleteDialog = (id: string) => {
     setDeleteQuoteId(id)
     onDeleteOpen()
   }
@@ -461,25 +349,112 @@ const QuotesPage = () => {
     setSelectedShift(option);
   }
 
+  // Filtered quotes based on state
+  const filteredQuotes = useMemo(() => {
+    return processedQuotes.filter(quote => {
+      let include = true;
+
+      // --- Apply Search Term Filter --- 
+      if (searchTerm !== '') {
+        const matchesSearch = 
+          (quote['Quote Text'] && quote['Quote Text'].toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (quote.attribution && quote.attribution.toLowerCase().includes(searchTerm.toLowerCase()));
+        if (!matchesSearch) include = false;
+      }
+      
+      // --- Apply Storyteller Filter --- 
+      if (include && selectedStoryteller) {
+        const matchesStoryteller = quote.storytellerData?.id === selectedStoryteller.value;
+        if (!matchesStoryteller) include = false;
+      }
+      
+      // --- Apply Project Filter --- 
+      if (include && selectedProject) {
+        const matchesProject = quote.project === selectedProject.value;
+        if (!matchesProject) include = false;
+      }
+      
+      // --- Apply Location Filter --- 
+      if (include && selectedLocation) {
+        const matchesLocation = quote.location === selectedLocation.value;
+        if (!matchesLocation) include = false;
+      }
+      
+      // --- Apply Shift Filter --- 
+      if (include && selectedShift) {
+        // Check if the quote's derived shift matches the filter value
+        const matchesShift = quote.shift === selectedShift.value;
+        if (!matchesShift) include = false;
+      }
+      
+      return include;
+    });
+  }, [processedQuotes, searchTerm, selectedStoryteller, selectedProject, selectedLocation, selectedShift]);
+
+  // Options for filter dropdowns derived from data
+  const projectOptions = useMemo(() => 
+    Array.from(new Set(storytellers.map(s => s.Project).filter(Boolean))) 
+      .map(p => ({ value: p as string, label: p as string }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [storytellers]
+  );
+
+  const locationOptions = useMemo(() => 
+    Array.from(new Set(storytellers.map(s => s.Location).filter(Boolean)))
+      .map(l => ({ value: l as string, label: l as string }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [storytellers]
+  );
+
+  const shiftOptions = useMemo(() => 
+    Array.from(new Set(mediaItems.map(m => m.Shift).filter(Boolean)))
+      .map(s => ({ value: s as string, label: s as string }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [mediaItems]
+  );
+
+  const themeOptions = useMemo(() => 
+    themes.map(theme => ({
+      value: theme.id,
+      label: theme.Name
+    })),
+    [themes]
+  );
+
+  if (loading) {
+    return (
+      <Container maxW="container.xl" py={5}>
+        <Flex justify="center" align="center" minH="50vh">
+          <Spinner size="xl" thickness="4px" />
+        </Flex>
+      </Container>
+    )
+  }
+
+  if (error) {
+    return (
+      <Container maxW="container.xl" py={5}>
+        <Alert status="error">
+          <AlertIcon />
+          {error}
+        </Alert>
+      </Container>
+    )
+  }
+
   return (
-    <Container maxW="container.xl" py={8}>
-      <VStack spacing={8} align="stretch">
-        <Flex justify="space-between" align="center">
-          <Heading size="lg">Quotes</Heading>
-          <Button 
-            leftIcon={<AddIcon />} 
-            colorScheme="blue" 
-            onClick={openAddModal}
-          >
+    <Container maxW="container.xl" py={5}>
+      <Box mb={6}>
+        <Flex justifyContent="space-between" alignItems="center" mb={4}>
+          <Heading as="h1" size="xl">Quotes</Heading>
+          <Button leftIcon={<AddIcon />} colorScheme="teal" onClick={openAddDialog}>
             Add Quote
           </Button>
         </Flex>
 
-        <Grid templateColumns={{ base: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(3, 1fr)", xl: "1fr 2fr 2fr 2fr 2fr" }} gap={4} alignItems="center">
-          {/* Search Input */}
-          <Box gridColumn={{ base: "span 1", sm: "span 2", lg: "span 3", xl: "span 1" }}>
-            <InputGroup size="sm">
-              {/* Ensure InputLeftElement is here */}
+        <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' }} gap={3} mb={4}>
+          <Box>
+            <InputGroup>
               <InputLeftElement pointerEvents="none">
                 <SearchIcon color="gray.300" />
               </InputLeftElement>
@@ -487,257 +462,205 @@ const QuotesPage = () => {
                 placeholder="Search quotes..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                borderRadius="md"
               />
             </InputGroup>
           </Box>
-          
-          {/* Filters */}
-          <Box minW="150px">
+          <Box>
             <ReactSelect
               placeholder="Filter by Storyteller..."
               value={selectedStoryteller}
-              options={storytellerOptions}
+              options={storytellers.map(s => ({ value: s.id, label: s.Name })).sort((a, b) => a.label.localeCompare(b.label))}
               onChange={handleStorytellerChange}
               isClearable
-              styles={{ control: (base) => ({ ...base, fontSize: 'sm' }) }}
             />
           </Box>
-          <Box minW="150px">
+          <Box>
             <ReactSelect
               placeholder="Filter by Project..."
               value={selectedProject}
               options={projectOptions}
               onChange={handleProjectChange}
               isClearable
-              styles={{ control: (base) => ({ ...base, fontSize: 'sm' }) }}
             />
           </Box>
-          <Box minW="150px">
+          <Box>
             <ReactSelect
               placeholder="Filter by Location..."
               value={selectedLocation}
               options={locationOptions}
               onChange={handleLocationChange}
               isClearable
-              styles={{ control: (base) => ({ ...base, fontSize: 'sm' }) }}
             />
           </Box>
-          <Box minW="150px">
+          <Box>
             <ReactSelect
               placeholder="Filter by Shift..."
               value={selectedShift}
               options={shiftOptions}
               onChange={handleShiftChange}
               isClearable
-              styles={{ control: (base) => ({ ...base, fontSize: 'sm' }) }}
-              isDisabled={loading || shiftOptions.length === 0}
             />
           </Box>
         </Grid>
 
-        {error && (
-          <Alert status="error">
-            <AlertIcon />
-            {error}
-          </Alert>
-        )}
+        <Text mb={2}>
+          Showing {filteredQuotes.length} of {quotes.length} quotes
+        </Text>
+      </Box>
 
-        {loading ? (
-          <Box textAlign="center" py={10}>
-            <Spinner size="xl" />
-          </Box>
-        ) : filteredQuotes.length === 0 ? (
-          <Box textAlign="center" py={10}>
-            <Text>No quotes found</Text>
-            <Button 
-              mt={4} 
-              leftIcon={<AddIcon />} 
-              colorScheme="blue" 
-              onClick={openAddModal}
-            >
-              Add Quote
-            </Button>
+      <VStack spacing={4} align="stretch">
+        {filteredQuotes.length === 0 ? (
+          <Box p={4} borderWidth={1} borderRadius="md" bg={cardBg}>
+            <Text>No quotes found matching the current filters.</Text>
           </Box>
         ) : (
-          <Grid 
-            templateColumns={{ 
-              base: "repeat(1, 1fr)", 
-              md: "repeat(2, 1fr)", 
-              lg: "repeat(3, 1fr)" 
-            }}
-            gap={6}
-          >
-            {filteredQuotes.map((quote: ProcessedQuote) => (
-              <Box
-                key={quote.id}
-                borderWidth="1px"
-                borderRadius="lg"
-                p={5}
-                bg={cardBg}
-                borderColor={borderColor}
-                boxShadow="sm"
-                position="relative"
-              >
-                 <Flex justify="space-between" align="start" mb={3}>
-                   <Box flex="1" mr={2}>
-                      <Text fontSize="lg" fontStyle="italic" mb={2}>
-                        "{quote['Quote Text']}"
-                      </Text>
-                      {/* Display Attribution */}
-                      {quote.attribution && (
-                        <Text fontSize="sm" color="gray.500" textAlign="right">- {quote.attribution}</Text>
-                      )}
-                   </Box>
-                    {/* Edit/Delete Buttons */}
-                    <HStack spacing={1}>
-                      <Tooltip label="Edit Quote" fontSize="xs">
-                        <IconButton
-                          icon={<EditIcon />}
-                          aria-label={`Edit quote`}
-                          size="xs"
-                          variant="ghost"
-                          onClick={() => openEditModal(quote)}
-                        />
-                      </Tooltip>
-                      <Tooltip label="Delete Quote" fontSize="xs">
-                        <IconButton
-                          icon={<DeleteIcon />}
-                          aria-label={`Delete quote`}
-                          size="xs"
-                          variant="ghost"
-                          colorScheme="red"
-                          onClick={() => openDeleteModal(quote.id)}
-                        />
-                      </Tooltip>
-                    </HStack>
-                 </Flex>
-                 
-                <Divider my={2} />
-                 
-                {/* Display Related Info */}
-                <VStack align="start" spacing={1} mt={2}>
-                   {quote.storytellerData && (
-                     <HStack>
-                       <Text fontSize="xs" fontWeight="bold" color="gray.500">Storyteller:</Text>
-                       <Badge size="sm" colorScheme="pink" variant="solid" borderRadius="full">{quote.storytellerData.Name}</Badge>
-                     </HStack>
-                   )}
-                   {quote.project && (
-                      <HStack>
-                        <Text fontSize="xs" fontWeight="bold" color="gray.500">Project:</Text>
-                        <Badge size="sm" colorScheme="green" variant="subtle">{quote.project}</Badge>
-                      </HStack>
-                   )}
-                   {quote.location && (
-                      <HStack>
-                        <Text fontSize="xs" fontWeight="bold" color="gray.500">Location:</Text>
-                        <Badge size="sm" colorScheme="yellow" variant="subtle">{quote.location}</Badge>
-                      </HStack>
-                   )}
-                   {quote.shift && (
-                      <HStack>
-                        <Text fontSize="xs" fontWeight="bold" color="gray.500">Shift:</Text>
-                        <Tag size="sm" colorScheme="purple" variant="subtle" borderRadius="md">{quote.shift}</Tag>
-                      </HStack>
-                   )}
-                   {/* Add Theme display if needed */}
-                 </VStack>
-              </Box>
-            ))}
-          </Grid>
-        )}
-      </VStack>
-
-      {/* Add/Edit Quote Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} size="lg">
-        <ModalOverlay />
-        <ModalContent>
-          <form onSubmit={handleSubmit(editingQuote ? handleEditQuote : handleCreateQuote)}>
-            <ModalHeader>{editingQuote ? 'Edit Quote' : 'Add Quote'}</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody pb={6}>
-              <FormControl isInvalid={!!errors.text} isRequired mb={4}>
-                <FormLabel>Quote Text</FormLabel>
-                <Textarea
-                  placeholder="Enter the quote text"
-                  {...register('text', {
-                    required: 'Quote text is required',
-                    minLength: { value: 3, message: 'Quote must be at least 3 characters long' }
-                  })}
-                  rows={4}
-                />
-                <FormErrorMessage>{errors.text?.message}</FormErrorMessage>
-              </FormControl>
-
-              <FormControl mb={4}>
-                <FormLabel>Attribution</FormLabel>
-                <Input
-                  placeholder="Who said this quote? (optional)"
-                  {...register('attribution')}
-                />
-              </FormControl>
-
-              <FormControl mb={4}>
-                <FormLabel>Themes</FormLabel>
-                
-                {selectedThemes && selectedThemes.length > 0 && (
-                  <Box mb={4}>
-                    <Wrap>
-                      {selectedThemes.map(themeId => {
-                        const themeName = themes.find(t => t.id === themeId)?.['Theme Name'];
-                        if (!themeName) return null;
-                        return (
-                          <WrapItem key={themeId}>
-                            <Tag colorScheme="blue" size="md">
-                              <TagLabel>{themeName}</TagLabel>
-                              <TagCloseButton onClick={() => removeTheme(themeId)} />
-                            </Tag>
-                          </WrapItem>
-                        );
-                      })}
-                    </Wrap>
+          filteredQuotes.map(quote => (
+            <Box 
+              key={quote.id} 
+              p={4} 
+              borderWidth={1} 
+              borderRadius="md" 
+              bg={cardBg}
+              borderColor={borderColor}
+              boxShadow="sm"
+            >
+              <Flex justify="space-between" mb={2}>
+                <Text fontSize="lg" fontWeight="bold">
+                  {quote.attribution ? `"${quote['Quote Text']}" - ${quote.attribution}` : `"${quote['Quote Text']}"`}
+                </Text>
+                <HStack>
+                  <IconButton
+                    aria-label="Edit quote"
+                    icon={<EditIcon />}
+                    size="sm"
+                    onClick={() => openEditDialog(quote)}
+                  />
+                  <IconButton
+                    aria-label="Delete quote"
+                    icon={<DeleteIcon />}
+                    size="sm"
+                    colorScheme="red"
+                    onClick={() => openDeleteDialog(quote.id)}
+                  />
+                </HStack>
+              </Flex>
+              
+              <Divider my={2} />
+              
+              <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={3}>
+                {quote.storytellerData && (
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm">Storyteller:</Text>
+                    <Text>{quote.storytellerData.Name}</Text>
                   </Box>
                 )}
                 
-                <Box maxH="200px" overflowY="auto" borderWidth="1px" borderRadius="md">
-                  {loadingThemes ? (
-                    <Box p={3} textAlign="center">
-                      <Spinner size="sm" mr={2} />
-                      <Text display="inline">Loading themes...</Text>
-                    </Box>
-                  ) : themes.length === 0 ? (
-                    <Box p={3} textAlign="center">
-                      <Text>No themes available</Text>
-                    </Box>
-                  ) : (
-                    <Stack spacing={0} divider={<Divider />}>
-                      {themes.map(theme => (
-                        <Checkbox
-                          key={theme.id}
-                          isChecked={selectedThemes?.includes(theme.id)}
-                          onChange={(e) => handleThemeToggle(theme.id, e.target.checked)}
-                          p={2}
-                        >
-                          {theme['Theme Name']}
-                        </Checkbox>
-                      ))}
-                    </Stack>
-                  )}
+                {quote.project && (
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm">Project:</Text>
+                    <Text>{quote.project}</Text>
+                  </Box>
+                )}
+                
+                {quote.location && (
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm">Location:</Text>
+                    <Text>{quote.location}</Text>
+                  </Box>
+                )}
+                
+                {quote.shift && (
+                  <Box>
+                    <Text fontWeight="bold" fontSize="sm">Shift:</Text>
+                    <Text>{quote.shift}</Text>
+                  </Box>
+                )}
+              </Grid>
+              
+              {quote.Theme && (
+                <Box mt={2}>
+                  <Wrap>
+                    <WrapItem>
+                      <Badge colorScheme="purple" py={1} px={2} borderRadius="lg">
+                        {themes.find(t => t.id === quote.Theme)?.Name || 'Unknown Theme'}
+                      </Badge>
+                    </WrapItem>
+                  </Wrap>
                 </Box>
-              </FormControl>
-            </ModalBody>
+              )}
+            </Box>
+          ))
+        )}
+      </VStack>
 
+      {/* Create/Edit Quote Modal */}
+      <Modal isOpen={isOpen} onClose={onClose} size="xl">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            {editingQuote ? 'Edit Quote' : 'Add New Quote'}
+          </ModalHeader>
+          <ModalCloseButton />
+          <form onSubmit={handleSubmit(editingQuote ? handleEditQuote : handleCreateQuote)}>
+            <ModalBody>
+              <VStack spacing={4}>
+                <FormControl isInvalid={!!errors.text}>
+                  <FormLabel htmlFor="text">Quote Text</FormLabel>
+                  <Textarea
+                    id="text"
+                    placeholder="Enter the quote text"
+                    {...register('text', {
+                      required: 'Quote text is required',
+                    })}
+                  />
+                  {errors.text && (
+                    <FormErrorMessage>{errors.text.message}</FormErrorMessage>
+                  )}
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel htmlFor="attribution">Attribution</FormLabel>
+                  <Input
+                    id="attribution"
+                    placeholder="Who said this quote? (optional)"
+                    {...register('attribution')}
+                  />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Theme</FormLabel>
+                  <Controller
+                    name="themes"
+                    control={control}
+                    render={({ field }) => (
+                      <ReactSelect
+                        {...field}
+                        isMulti
+                        options={themeOptions}
+                        placeholder="Select a theme (optional)"
+                        value={themeOptions.filter(option => field.value?.includes(option.value))}
+                        onChange={(selectedOptions) => {
+                          field.onChange(selectedOptions ? selectedOptions.map(option => option.value) : []);
+                        }}
+                        isLoading={loadingThemes}
+                      />
+                    )}
+                  />
+                </FormControl>
+              </VStack>
+            </ModalBody>
             <ModalFooter>
-              <Button 
-                colorScheme="blue" 
-                mr={3} 
+              <Button variant="ghost" mr={3} onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
                 type="submit"
+                colorScheme="blue"
                 isLoading={isSubmitting}
+                loadingText="Submitting"
               >
                 {editingQuote ? 'Update' : 'Create'}
               </Button>
-              <Button onClick={onClose}>Cancel</Button>
             </ModalFooter>
           </form>
         </ModalContent>
