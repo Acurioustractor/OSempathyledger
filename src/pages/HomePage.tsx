@@ -33,9 +33,12 @@ import {
   fetchStories, Story,
   fetchThemes, Theme,
   fetchQuotes, Quote,
+  fetchShifts, Shift,
   AirtableAttachment
 } from '../services/airtable'; // Assuming these fetch functions exist
-import StoryCard from '../components/StoryCard'; // Import StoryCard component
+import StoryCard from '../components/HomePageStoryCard'; // Import the HomePageStoryCard component
+import StoryDetailModal from '../components/StoryDetailModal'; // Import the StoryDetailModal component
+import { EnhancedStory } from '../hooks/useStoriesData'; // Import the EnhancedStory type
 
 // Helper to get a primary image URL from Airtable attachments
 const getPrimaryImageUrl = (attachments?: AirtableAttachment[]): string | undefined => {
@@ -43,6 +46,15 @@ const getPrimaryImageUrl = (attachments?: AirtableAttachment[]): string | undefi
   // Prefer large thumbnail, fallback to full, then url
   const firstAttachment = attachments[0];
   return firstAttachment.thumbnails?.large?.url || firstAttachment.thumbnails?.full?.url || firstAttachment.url;
+};
+
+// Helper function to get thumbnail URL for StoryDetailModal
+const getThumbnailUrl = (attachments?: AirtableAttachment[]): string | undefined => {
+  if (!attachments || attachments.length === 0) return undefined;
+  const firstAttachment = attachments[0];
+  return firstAttachment.thumbnails?.small?.url || 
+         firstAttachment.thumbnails?.large?.url || 
+         firstAttachment.url;
 };
 
 // Helper function to attempt to get an embeddable URL (basic example)
@@ -252,6 +264,84 @@ const getHardcodedThemes = (story: Story): string[] => {
 };
 
 const HomePage = () => {
+  // Debug function to directly examine data
+  const debugDataDirectly = useCallback((stories, media, storytellers) => {
+    if (!stories.length || !media.length || !storytellers.length) return;
+    
+    console.log("========= DIRECT DATA DEBUGGING =========");
+    
+    // Look for the specific story and media
+    const powerOfCommunityStory = stories.find(s => s.Title?.includes("Power of Community"));
+    
+    if (powerOfCommunityStory) {
+      console.log("Found Power of Community story:", powerOfCommunityStory.id);
+      console.log("Media IDs:", powerOfCommunityStory.Media);
+      
+      if (powerOfCommunityStory.Media && Array.isArray(powerOfCommunityStory.Media)) {
+        powerOfCommunityStory.Media.forEach(mediaId => {
+          const mediaItem = media.find(m => m.id === mediaId);
+          console.log(`Media item ${mediaId}:`, mediaItem);
+          
+          if (mediaItem) {
+            // Examine all fields for any storyteller connection
+            console.log("All fields in media item:", Object.keys(mediaItem));
+            
+            // Check the Storytellers field specifically
+            if (mediaItem.Storytellers) {
+              console.log("Storytellers in media:", mediaItem.Storytellers);
+              
+              // Try to find these storytellers
+              if (Array.isArray(mediaItem.Storytellers)) {
+                mediaItem.Storytellers.forEach(storytellerId => {
+                  const storyteller = storytellers.find(s => s.id === storytellerId);
+                  console.log(`Storyteller ${storytellerId}:`, storyteller);
+                });
+              }
+            }
+            
+            // Check for 'Storyteller' (singular) field
+            if (mediaItem.Storyteller) {
+              console.log("Storyteller (singular) in media:", mediaItem.Storyteller);
+            }
+          }
+        });
+      }
+    }
+    
+    // Look at other stories with successful storyteller links for comparison
+    const storiesWithStorytellers = stories.filter(s => {
+      // First check direct links
+      if (s.Storytellers && Array.isArray(s.Storytellers) && s.Storytellers.length > 0) {
+        return true;
+      }
+      
+      // Then check media links
+      if (s.Media && Array.isArray(s.Media) && s.Media.length > 0) {
+        const linkedMedia = s.Media.map(id => media.find(m => m.id === id)).filter(Boolean);
+        return linkedMedia.some(m => m.Storytellers && Array.isArray(m.Storytellers) && m.Storytellers.length > 0);
+      }
+      
+      return false;
+    });
+    
+    if (storiesWithStorytellers.length > 0) {
+      console.log("Example of a story WITH storytellers:", storiesWithStorytellers[0]);
+      
+      const exampleStory = storiesWithStorytellers[0];
+      if (exampleStory.Media && Array.isArray(exampleStory.Media) && exampleStory.Media.length > 0) {
+        const mediaItem = media.find(m => m.id === exampleStory.Media[0]);
+        console.log("Example media with storytellers:", mediaItem);
+      }
+    }
+    
+    // Check storytellers data structure
+    if (storytellers.length > 0) {
+      console.log("Storyteller data structure example:", storytellers[0]);
+    }
+    
+    console.log("========= END DIRECT DEBUGGING =========");
+  }, []);
+  
   const navigate = useNavigate();
   const bgColor = useColorModeValue('gray.50', 'gray.800');
   const statBg = useColorModeValue('white', 'gray.700');
@@ -267,26 +357,111 @@ const HomePage = () => {
   const [stories, setStories] = useState<Story[]>([]);
   const [themes, setThemes] = useState<Theme[]>([]);
   const [allQuotes, setAllQuotes] = useState<Quote[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // State for the StoryDetailModal
+  const [selectedStory, setSelectedStory] = useState<EnhancedStory | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Helper function to enhance a story with linked data
+  const enhanceStory = useCallback((story: Story): EnhancedStory => {
+    // Create enhanced story with original data
+    const enhanced: EnhancedStory = { ...story };
+    
+    // Get storytellers from multiple possible sources
+    const storytellerIds = new Set<string>();
+    
+    // 1. Direct storyteller links (if present)
+    if (story.Storytellers && Array.isArray(story.Storytellers)) {
+      story.Storytellers.forEach(id => storytellerIds.add(id));
+    }
+    
+    // 2. Storytellers through media items (key relationship path)
+    const mediaItems = story.Media && Array.isArray(story.Media) 
+      ? story.Media.map(mediaId => media.find(m => m.id === mediaId)).filter(Boolean)
+      : [];
+      
+    mediaItems.forEach(mediaItem => {
+      if (mediaItem && mediaItem.Storytellers && Array.isArray(mediaItem.Storytellers)) {
+        mediaItem.Storytellers.forEach(id => storytellerIds.add(id));
+      }
+    });
+    
+    // 3. Check for singular "Storyteller" field variation
+    if (story.Storyteller && typeof story.Storyteller === 'string') {
+      storytellerIds.add(story.Storyteller);
+    }
+    
+    // Link the storytellers based on collected IDs
+    enhanced.linkedStorytellers = Array.from(storytellerIds)
+      .map(id => storytellers.find(s => s.id === id))
+      .filter(Boolean) as Storyteller[];
+    
+    // Log linking results for debugging
+    console.log(`[enhanceStory] Story "${story.Title}" - linked ${enhanced.linkedStorytellers?.length || 0} storytellers`);
+    if (enhanced.linkedStorytellers && enhanced.linkedStorytellers.length > 0) {
+      console.log(`[enhanceStory] Storyteller names: ${enhanced.linkedStorytellers.map(s => s.Name).join(', ')}`);
+    }
+    
+    // Link themes
+    enhanced.linkedThemes = themes.filter(
+      t => story.Themes?.includes(t.id)
+    );
+    
+    // Link media
+    enhanced.linkedMedia = media.filter(
+      m => story.Media?.includes(m.id)
+    );
+    
+    // Link shift details
+    if (story.Shifts?.length) {
+      enhanced.ShiftDetails = shifts.find(shift => shift.id === story.Shifts?.[0]) || undefined;
+    }
+    
+    return enhanced;
+  }, [storytellers, themes, media, shifts]);
+
+  // Modal handlers
+  const handleOpenModal = useCallback((story: Story) => {
+    const enhancedStory = enhanceStory(story);
+    
+    // Debugging info
+    console.log(`[handleOpenModal] Enhanced story "${enhancedStory.Title}" for modal`);
+    console.log(`[handleOpenModal] Has linkedStorytellers:`, !!enhancedStory.linkedStorytellers && enhancedStory.linkedStorytellers.length > 0);
+    if (enhancedStory.linkedStorytellers && enhancedStory.linkedStorytellers.length > 0) {
+      console.log(`[handleOpenModal] Storyteller names: ${enhancedStory.linkedStorytellers.map(s => s.Name).join(', ')}`);
+    }
+    
+    setSelectedStory(enhancedStory);
+    setIsModalOpen(true);
+  }, [enhanceStory]);
+
+  const handleCloseModal = useCallback(() => {
+    setIsModalOpen(false);
+    setSelectedStory(null);
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       setError(null);
       try {
-        const [storytellersData, mediaData, storiesData, themesData, quotesData] = await Promise.all([
+        const [storytellersData, mediaData, storiesData, themesData, quotesData, shiftsData] = await Promise.all([
           fetchStorytellers(),
           fetchMedia(),
           fetchStories(),
           fetchThemes(),
           fetchQuotes(),
+          fetchShifts(),
         ]);
         setStorytellers(storytellersData);
         setMedia(mediaData);
         setStories(storiesData);
         setThemes(themesData);
         setAllQuotes(quotesData);
+        setShifts(shiftsData);
       } catch (err) {
         console.error("Error loading homepage data:", err);
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -296,6 +471,13 @@ const HomePage = () => {
     };
     loadData();
   }, []);
+
+  // Call the debug function after data is loaded
+  useEffect(() => {
+    if (!loading && stories.length && media.length && storytellers.length) {
+      debugDataDirectly(stories, media, storytellers);
+    }
+  }, [loading, stories, media, storytellers, debugDataDirectly]);
 
   useEffect(() => {
     // Log link status after data is loaded
@@ -346,6 +528,8 @@ const HomePage = () => {
         themesField: JSON.stringify(sampleStory.Themes),
         hasQuotes: !!sampleStory.Quotes,
         quotesCount: sampleStory.Quotes?.length || 0,
+        videoEmbed: sampleStory['Video Embed Code'],
+        videoLink: sampleStory['Video Story Link']
       });
       
       // Check Drew Nichols story specifically
@@ -594,13 +778,81 @@ const HomePage = () => {
     return metadata;
   }, [featuredStory, media]);
 
-  // Find storytellers associated with the featured story
+  // Add an effect to log storyteller data for debugging
+  useEffect(() => {
+    if (!loading && storytellers.length > 0 && stories.length > 0 && media.length > 0) {
+      console.log('[HomePage] Storytellers available:', storytellers.length);
+      console.log('[HomePage] First few storytellers:', storytellers.slice(0, 3).map(s => ({
+        id: s.id,
+        name: s.Name,
+        hasProfileImage: !!s['File Profile Image']?.length
+      })));
+      
+      // Check for storyteller links in stories
+      const storiesWithDirectStorytellers = stories.filter(s => 
+        s.Storytellers && Array.isArray(s.Storytellers) && s.Storytellers.length > 0
+      );
+      console.log(`[HomePage] Stories with direct storytellers: ${storiesWithDirectStorytellers.length}/${stories.length}`);
+      
+      // Check for media with storytellers
+      const mediaWithStorytellers = media.filter(m => 
+        m.Storytellers && Array.isArray(m.Storytellers) && m.Storytellers.length > 0
+      );
+      console.log(`[HomePage] Media with storytellers: ${mediaWithStorytellers.length}/${media.length}`);
+      
+      // Check if stories have media with storytellers
+      let storyCount = 0;
+      stories.forEach(story => {
+        if (story.Media && Array.isArray(story.Media) && story.Media.length > 0) {
+          const linkedMedia = story.Media.map(id => media.find(m => m.id === id)).filter(Boolean);
+          const hasStorytellersInMedia = linkedMedia.some(m => 
+            m && m.Storytellers && Array.isArray(m.Storytellers) && m.Storytellers.length > 0
+          );
+          if (hasStorytellersInMedia) storyCount++;
+        }
+      });
+      console.log(`[HomePage] Stories with storytellers through media: ${storyCount}/${stories.length}`);
+    }
+  }, [loading, storytellers, stories, media]);
+
+  // Enhanced featuredStorytellers using the same approach as enhanceStory
   const featuredStorytellers = useMemo(() => {
-    if (!featuredStory || !featuredStory.Storytellers || !storytellers.length) return [];
-    return storytellers.filter(s => 
-      featuredStory.Storytellers && featuredStory.Storytellers.includes(s.id)
-    );
-  }, [featuredStory, storytellers]);
+    if (!featuredStory) return [];
+    
+    const storytellerIds = new Set<string>();
+    
+    // 1. Direct storyteller links
+    if (featuredStory.Storytellers && Array.isArray(featuredStory.Storytellers)) {
+      featuredStory.Storytellers.forEach(id => storytellerIds.add(id));
+    }
+    
+    // 2. Storytellers through media items
+    if (featuredStory.Media && Array.isArray(featuredStory.Media) && media.length > 0) {
+      featuredStory.Media.forEach(mediaId => {
+        const mediaItem = media.find(m => m.id === mediaId);
+        if (mediaItem && mediaItem.Storytellers && Array.isArray(mediaItem.Storytellers)) {
+          mediaItem.Storytellers.forEach(id => storytellerIds.add(id));
+        }
+      });
+    }
+    
+    // 3. Check singular "Storyteller" field
+    if (featuredStory.Storyteller && typeof featuredStory.Storyteller === 'string') {
+      storytellerIds.add(featuredStory.Storyteller);
+    }
+    
+    // Link the storytellers
+    const linked = Array.from(storytellerIds)
+      .map(id => storytellers.find(s => s.id === id))
+      .filter(Boolean) as Storyteller[];
+      
+    console.log(`[HomePage] Featured story has ${linked.length} linked storytellers`);
+    if (linked.length > 0) {
+      console.log(`[HomePage] Featured storyteller names: ${linked.map(s => s.Name).join(', ')}`);
+    }
+    
+    return linked;
+  }, [featuredStory, storytellers, media]);
 
   // Move relatedThemeNames inside the component
   const relatedThemeNames = useMemo(() => {
@@ -670,29 +922,28 @@ const HomePage = () => {
     </Stat>
   ), []);
 
-  // Simplify rendering of related sections
-  const renderStoryCard = (story: Story) => (
-    <Box key={story.id}>
-      <StoryCard 
-        story={story} 
-        allStorytellers={storytellers} 
-        allThemes={themes} 
-        onClick={() => navigate(`/stories/${story.id}`)}
-      />
-    </Box>
-  );
-
   // Simplify the rendering of section components for related sections
-  const renderRelatedSection = (title: string, stories: Story[]) => (
-    stories.length > 0 ? (
+  const renderRelatedSection = (title: string, storiesToRender: Story[]) => {
+    return storiesToRender.length > 0 ? (
       <Box mt={6}>
         <Heading size="lg" mb={6}>{title}</Heading>
         <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} spacing={6}>
-          {stories.map(renderStoryCard)}
+          {storiesToRender.map(story => (
+            <Box key={story.id}>
+              <StoryCard 
+                story={story} 
+                allStorytellers={storytellers} 
+                allThemes={themes}
+                allShifts={shifts}
+                allMedia={media}
+                onClick={() => handleOpenModal(story)}
+              />
+            </Box>
+          ))}
         </SimpleGrid>
       </Box>
     ) : null
-  );
+  };
 
   // Add useEffect to debug themes when they change
   useEffect(() => {
@@ -700,6 +951,54 @@ const HomePage = () => {
       console.log('[HomePage Effect] Themes to be rendered:', relatedThemeNames);
     }
   }, [relatedThemeNames]);
+
+  // Log story and shift information
+  useEffect(() => {
+    if (stories.length > 0 && shifts.length > 0) {
+      console.log('[HomePage] Stories with Shifts:', stories.filter(s => s.Shifts?.length > 0).map(s => ({
+        id: s.id,
+        title: s.Title,
+        shiftId: s.Shifts?.[0],
+        shiftDetails: shifts.find(shift => shift.id === s.Shifts?.[0])
+      })));
+    }
+  }, [stories, shifts]);
+
+  // Debug shifts data
+  useEffect(() => {
+    if (shifts && shifts.length > 0) {
+      console.log('[HomePage] Available shifts data:', shifts.slice(0, 5));
+    }
+    if (stories && stories.length > 0) {
+      console.log('[HomePage] Sample story Shifts fields:', stories.slice(0, 3).map(s => ({
+        id: s.id,
+        title: s.Title,
+        shiftsArray: s.Shifts
+      })));
+    }
+  }, [shifts, stories]);
+
+  // Add a function to safely handle the Video Embed Code
+  const renderVideoEmbed = useCallback((embedCode?: string) => {
+    if (!embedCode) return null;
+    
+    console.log('[HomePage] Rendering video embed:', embedCode);
+    
+    return (
+      <Box 
+        dangerouslySetInnerHTML={{ __html: embedCode }} 
+        width="100%"
+        height="100%"
+        sx={{
+          iframe: {
+            width: '100%',
+            height: '100%',
+            border: 'none'
+          }
+        }}
+      />
+    );
+  }, []);
 
   return (
     <Box bg={bgColor} minH="100vh">
@@ -865,23 +1164,13 @@ const HomePage = () => {
                       <Heading size="sm" mb={3}>Watch Story</Heading>
                       <AspectRatio ratio={16 / 9} width="100%">
                         {featuredStory['Video Embed Code'] ? (
-                          // Target potential iframe within the embed code
-                          <Box 
-                            dangerouslySetInnerHTML={{ __html: featuredStory['Video Embed Code'] }} 
-                            sx={{ 
-                              '& > iframe': { // Apply styles to direct iframe child if it exists
-                                width: '100%', 
-                                height: '100%', 
-                                border: 'none' 
-                              }
-                            }} 
-                          />
+                          renderVideoEmbed(featuredStory['Video Embed Code'])
                         ) : featuredVideoEmbedUrl ? (
                           <iframe
                             title={featuredStory.Title}
                             src={featuredVideoEmbedUrl}
                             allowFullScreen
-                            style={{ border: 'none', width: '100%', height: '100%' }} // Ensure iframe fills AspectRatio
+                            style={{ border: 'none', width: '100%', height: '100%' }}
                           />
                         ) : null}
                       </AspectRatio>
@@ -1091,6 +1380,15 @@ const HomePage = () => {
             {sameLocationStories.location && renderRelatedSection(`More Stories from ${sameLocationStories.location}`, sameLocationStories.stories)}
             {sameProjectStories.project && renderRelatedSection(`More from Project: ${sameProjectStories.project}`, sameProjectStories.stories)}
           </VStack>
+        )}
+
+        {/* Add StoryDetailModal to the component */}
+        {selectedStory && (
+          <StoryDetailModal
+            isOpen={isModalOpen}
+            onClose={handleCloseModal}
+            story={selectedStory}
+          />
         )}
       </Container>
     </Box>

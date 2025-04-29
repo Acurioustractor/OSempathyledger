@@ -364,7 +364,7 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
       position: "top-right"
     });
   }, [toast]);
-
+  
   // Helper to safely check if Google Maps is available
   const isGoogleMapsAvailable = useCallback(() => {
     try {
@@ -435,7 +435,7 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
         onShowStoryDetail={onShowStoryDetail}
         onClose={() => {
           infoWindowRef.current?.close();
-          setInfoWindowPortalContent(null);
+            setInfoWindowPortalContent(null);
         }}
       />
     );
@@ -477,21 +477,21 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
         map: mapRef.current,
         title: shift.Name ?? shift.name ?? 'Unnamed location',
         icon: {
-          path: google.maps.SymbolPath.CIRCLE,
+            path: google.maps.SymbolPath.CIRCLE,
           fillColor: markerColor,
-          fillOpacity: 0.9,
+            fillOpacity: 0.9,
           strokeWeight: 1,
           strokeColor: '#ffffff',
           scale: 10 + Math.min(storyCount, 5)
         },
         zIndex: storyCount ? (storyCount + 100) : 0, // Prioritize shifts with stories
         optimized: false // Fixes issues with markers not appearing
-      });
-      
-      // Store marker reference
+          });
+          
+          // Store marker reference
       markersRef.current.set(shift.id, marker);
-      
-      // Add click listener to marker
+          
+          // Add click listener to marker
       marker.addListener('click', () => {
         handleMarkerClick(shift.id);
       });
@@ -683,7 +683,7 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
       }
       
       // Clear map instance and listeners
-      if (mapRef.current) {
+    if (mapRef.current) {
         google.maps.event.clearInstanceListeners(mapRef.current);
         mapRef.current = null;
       }
@@ -767,18 +767,18 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
     return () => {
       // Clean up markers
       try {
-        if (markersRef.current) {
-          markersRef.current.forEach(marker => {
+      if (markersRef.current) {
+        markersRef.current.forEach(marker => {
             try {
               if (marker && typeof marker.setMap === 'function') {
-                google.maps.event.clearInstanceListeners(marker);
-                marker.setMap(null);
+          google.maps.event.clearInstanceListeners(marker);
+          marker.setMap(null);
               }
             } catch (e) {
               console.warn('Error cleaning up marker:', e);
             }
-          });
-          markersRef.current.clear();
+        });
+        markersRef.current.clear();
         }
       } catch (e) {
         console.warn('Error cleaning up markers:', e);
@@ -789,7 +789,7 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
         if (markerClustererRef.current && 
             markerClustererRef.current.clearMarkers && 
             typeof markerClustererRef.current.clearMarkers === 'function') {
-          markerClustererRef.current.clearMarkers();
+        markerClustererRef.current.clearMarkers();
         }
       } catch (e) {
         console.warn('Error cleaning up marker clusterer:', e);
@@ -799,7 +799,7 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
       try {
         if (infoWindowRef.current && 
             typeof infoWindowRef.current.close === 'function') {
-          infoWindowRef.current.close();
+        infoWindowRef.current.close();
         }
       } catch (e) {
         console.warn('Error cleaning up info window:', e);
@@ -807,9 +807,9 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
       
       // Clean up map event listeners
       try {
-        if (mapRef.current) {
-          google.maps.event.clearInstanceListeners(mapRef.current);
-        }
+      if (mapRef.current) {
+        google.maps.event.clearInstanceListeners(mapRef.current);
+      }
       } catch (e) {
         console.warn('Error cleaning up map event listeners:', e);
       }
@@ -918,12 +918,12 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
           </Box>
           
           <Flex justifyContent="space-between" mt={4}>
-            <Button
-              colorScheme="blue"
+          <Button 
+            colorScheme="blue" 
               onClick={() => window.location.reload()}
             >
               Refresh Page
-            </Button>
+          </Button>
             
             <Button
               variant="outline"
@@ -1009,19 +1009,19 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
         )}
         
         <Flex gap={3}>
-          <Button 
-            colorScheme="blue" 
-            onClick={() => {
+        <Button 
+          colorScheme="blue" 
+          onClick={() => {
               console.log('User manually retrying map component');
-              setError(null);
-              setIsLoading(true);
+            setError(null);
+            setIsLoading(true);
               setLoadingProgress(0);
               setLoadingStatus("Initializing...");
               retryLoading(); // Use our new retry function
-            }}
-          >
+          }}
+        >
             Reload Map
-          </Button>
+        </Button>
           
           <Button
             colorScheme="gray"
@@ -1040,19 +1040,19 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
   }
   
   if (isLoading && !mapInitialized) {
-    return (
-      <Box 
-        width="100%" 
-        height="500px" 
-        borderRadius="md" 
+  return (
+    <Box 
+      width="100%" 
+      height="500px" 
+      borderRadius="md"
         display="flex" 
         flexDirection="column"
         alignItems="center" 
         justifyContent="center"
         bgColor="gray.100"
         p={6}
-        position="relative"
-      >
+      position="relative"
+    >
         <Spinner size="xl" color="blue.500" thickness="4px" mb={4} />
         <Text mb={4} fontWeight="medium">{loadingStatus}</Text>
         <Progress 
@@ -1208,65 +1208,65 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
           </Box>
         )}
         
-        {/* Map will be rendered here by Google Maps API */}
-        
-        {/* Legend */}
+      {/* Map will be rendered here by Google Maps API */}
+      
+      {/* Legend */}
         {!isLoading && mapInitialized && (
-          <Box 
-            position="absolute" 
-            right={4} 
-            top={4} 
-            bg="white"
-            boxShadow="md" 
-            borderRadius="md"
-            p={3}
-            zIndex={10}
-          >
-            <Heading size="xs" mb={2}>Legend</Heading>
-            <Flex align="center" mb={2}>
-              <Box w={3} h={3} borderRadius="full" bg="#38A169" mr={2} />
-              <Text fontSize="sm">Many stories</Text>
-            </Flex>
-            <Flex align="center" mb={2}>
-              <Box w={3} h={3} borderRadius="full" bg="#DD6B20" mr={2} />
-              <Text fontSize="sm">Some stories</Text>
-            </Flex>
-            <Flex align="center">
-              <Box w={3} h={3} borderRadius="full" bg="#A0AEC0" mr={2} />
-              <Text fontSize="sm">No stories</Text>
-            </Flex>
-          </Box>
+      <Box 
+        position="absolute" 
+        right={4} 
+        top={4} 
+        bg="white" 
+        boxShadow="md" 
+        borderRadius="md"
+        p={3}
+        zIndex={10}
+      >
+        <Heading size="xs" mb={2}>Legend</Heading>
+        <Flex align="center" mb={2}>
+          <Box w={3} h={3} borderRadius="full" bg="#38A169" mr={2} />
+          <Text fontSize="sm">Many stories</Text>
+        </Flex>
+        <Flex align="center" mb={2}>
+          <Box w={3} h={3} borderRadius="full" bg="#DD6B20" mr={2} />
+          <Text fontSize="sm">Some stories</Text>
+        </Flex>
+        <Flex align="center">
+          <Box w={3} h={3} borderRadius="full" bg="#A0AEC0" mr={2} />
+          <Text fontSize="sm">No stories</Text>
+        </Flex>
+      </Box>
         )}
-        
-        {/* Error overlay that appears for map errors but doesn't block the whole component */}
-        {error && (
-          <Box 
-            position="absolute"
-            bottom={4}
-            left={4}
-            bg="red.100"
-            borderRadius="md"
-            p={3}
-            zIndex={100}
-            boxShadow="md"
-            borderWidth={1}
-            borderColor="red.300"
-          >
-            <Text fontSize="sm" color="red.700">{error}</Text>
-            <Button 
-              size="sm" 
-              colorScheme="red" 
-              mt={2} 
-              onClick={() => {
-                setError(null);
-                setIsLoading(true);
+      
+      {/* Error overlay that appears for map errors but doesn't block the whole component */}
+      {error && (
+        <Box
+          position="absolute"
+          bottom={4}
+          left={4}
+          bg="red.100"
+          borderRadius="md"
+          p={3}
+          zIndex={100}
+          boxShadow="md"
+          borderWidth={1}
+          borderColor="red.300"
+        >
+          <Text fontSize="sm" color="red.700">{error}</Text>
+          <Button 
+            size="sm" 
+            colorScheme="red" 
+            mt={2} 
+            onClick={() => {
+              setError(null);
+              setIsLoading(true);
                 retryLoading();
-              }}
-            >
-              Reload Map
-            </Button>
-          </Box>
-        )}
+            }}
+          >
+            Reload Map
+          </Button>
+        </Box>
+      )}
         
         {/* Ad blocker warning if detected */}
         {isAdBlocked && (
@@ -1289,10 +1289,10 @@ const ShiftsMapComponent: React.FC<ShiftsMapComponentProps> = ({
             </Text>
           </Box>
         )}
-        
-        {/* InfoWindow portal container */}
-        {infoWindowPortalContent && infoWindowPortalRef.current && 
-          createPortal(infoWindowPortalContent, infoWindowPortalRef.current)}
+      
+      {/* InfoWindow portal container */}
+      {infoWindowPortalContent && infoWindowPortalRef.current && 
+        createPortal(infoWindowPortalContent, infoWindowPortalRef.current)}
       </MapContainer>
       
       {/* Hidden container for InfoWindow portal content */}

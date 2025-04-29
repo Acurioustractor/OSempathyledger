@@ -1,84 +1,95 @@
 import { useMemo } from 'react';
 import useFetch from './useFetch';
-import {
-  fetchQuotes,
-  fetchStorytellers,
-  fetchThemes,
-  fetchMedia,
-  Quote,
-  Storyteller,
-  Theme,
-  Media,
-  FetchOptions
+import { 
+  fetchQuotes, 
+  // Remove imports for data now coming from context
+  // fetchThemes,
+  // fetchStorytellers, 
+  // fetchMedia, 
+  Quote, 
+  Theme, 
+  Storyteller, 
+  Media, 
+  FetchOptions 
 } from '../services/airtable';
+import { useAirtableData } from '../context/AirtableDataContext'; // Import the context hook
 
 /**
- * Standardized hook for fetching all data needed for the Quotes page
- * Fetches quotes, storytellers, themes, and media in parallel
+ * Standardized hook for fetching quotes and accessing related global data
  */
 export function useQuotesData(options: FetchOptions = {}) {
-  // Individual data hooks
-  const quotes = useFetch<Quote[]>(() => fetchQuotes(options), [], [options]);
-  const storytellers = useFetch<Storyteller[]>(() => fetchStorytellers(options), [], [options]);
-  const themes = useFetch<Theme[]>(() => fetchThemes(options), [], [options]);
-  const media = useFetch<Media[]>(() => fetchMedia(options), [], [options]);
-  
-  // Calculate aggregated loading and error states
-  const isLoading = quotes.isLoading || storytellers.isLoading || themes.isLoading || media.isLoading;
-  const error = quotes.error || storytellers.error || themes.error || media.error;
-  
-  // Refetch all data
+  // Get common data from context
+  const {
+    themes,
+    storytellers,
+    media,
+    isLoadingThemes,
+    isLoadingStorytellers,
+    isLoadingMedia,
+    errorThemes,
+    errorStorytellers,
+    errorMedia,
+    refetchThemes,
+    refetchStorytellers,
+    refetchMedia
+  } = useAirtableData();
+
+  // Generate unique cache key for quotes fetch
+  const quotesCacheKey = useMemo(() => `quotes_${JSON.stringify(options)}`, [options]);
+
+  // Fetch only quotes using useFetch
+  const quotesFetch = useFetch<Quote[]>(
+    () => fetchQuotes(options), 
+    [], 
+    [options], // Depends only on options
+    {
+      maxRetries: 3,
+      cacheKey: quotesCacheKey,
+      cacheDuration: 5 * 60 * 1000 // Cache quotes for 5 minutes
+    }
+  );
+
+  // Calculate aggregated loading state
+  const isLoading = quotesFetch.isLoading || isLoadingThemes || isLoadingStorytellers || isLoadingMedia;
+
+  // Combine error states (prioritize quotes error)
+  const error = quotesFetch.error 
+    ? quotesFetch.error.message 
+    : errorThemes || errorStorytellers || errorMedia
+      ? "Error loading related context data" 
+      : null;
+
+  // Combined refetch function if needed
   const refetchAll = async () => {
     await Promise.all([
-      quotes.refetch(),
-      storytellers.refetch(),
-      themes.refetch(),
-      media.refetch()
+      quotesFetch.refetch(true), // Force refresh quotes
+      refetchThemes(),
+      refetchStorytellers(),
+      refetchMedia()
     ]);
   };
-  
-  // Get storytellers for a specific quote
-  const getQuoteStorytellers = (quote: Quote) => {
-    if (!storytellers.data || !quote.Storytellers) return [];
-    
-    return storytellers.data.filter(storyteller => 
-      Array.isArray(quote.Storytellers) && quote.Storytellers.includes(storyteller.id)
-    );
+
+  // Simplified cache invalidation
+  const clearCaches = () => {
+    quotesFetch.invalidateCache();
+    // Context handles its own caching
   };
-  
-  // Get theme for a specific quote
-  const getQuoteTheme = (quote: Quote) => {
-    if (!themes.data || !quote.Theme) return null;
-    
-    return themes.data.find(theme => theme.id === quote.Theme);
-  };
-  
-  // Get media for a specific quote
-  const getQuoteMedia = (quote: Quote) => {
-    if (!media.data || !quote.Media) return [];
-    
-    return media.data.filter(item => 
-      Array.isArray(quote.Media) && quote.Media.includes(item.id)
-    );
-  };
-  
+
   return {
-    quotes: quotes.data || [],
-    storytellers: storytellers.data || [],
-    themes: themes.data || [],
-    media: media.data || [],
+    // Provide data from context and the specific quotes fetch
+    quotes: quotesFetch.data || [],
+    themes: themes || [],
+    storytellers: storytellers || [],
+    media: media || [],
     isLoading,
     error,
     refetchAll,
-    // Utility functions
-    getQuoteStorytellers,
-    getQuoteTheme,
-    getQuoteMedia,
-    // Individual refetch functions
-    refetchQuotes: quotes.refetch,
-    refetchStorytellers: storytellers.refetch,
-    refetchThemes: themes.refetch,
-    refetchMedia: media.refetch
+    refetchQuotes: quotesFetch.refetch, // Specific refetch for quotes
+    // Expose context refetches if direct control is desired
+    refetchThemes,
+    refetchStorytellers,
+    refetchMedia,
+    clearCaches
   };
 }
 

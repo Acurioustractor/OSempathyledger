@@ -30,7 +30,7 @@ const TagForm: React.FC<TagFormProps> = ({ tag, onSubmit }) => {
   useEffect(() => {
     if (tag) {
       setName(tag['Tag Name'] || '');
-      setDescription(tag.Description || '');
+      setDescription(tag.description || '');
     } else {
       // Reset form for new tag
       setName('');
@@ -56,7 +56,7 @@ const TagForm: React.FC<TagFormProps> = ({ tag, onSubmit }) => {
     try {
       const tagData = {
         'Tag Name': name,
-        Description: description
+        description: description
       };
       
       if (tag) {

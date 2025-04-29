@@ -10,41 +10,62 @@ const BASE_URL = `https://api.airtable.com/v0/${BASE_ID}`;
 // Initialize Airtable
 const base = new Airtable({ apiKey: API_KEY }).base(BASE_ID || '');
 
-// Function to add delay between requests to avoid rate limiting
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// --- New Rate Limiting Logic ---
+const MAX_CONCURRENT_REQUESTS = 3; // Reduced from 4
+const MIN_REQUEST_INTERVAL_MS = 1000 / MAX_CONCURRENT_REQUESTS + 100; // ~433ms + buffer (Increased buffer)
 
-// Track rate limit usage to avoid hitting limits
-let requestCount = 0;
-let lastRequestTime = Date.now();
-const RATE_LIMIT_RESET = 1000; // 1 second in milliseconds
-const RATE_LIMIT_MAX = 5;      // Max 5 requests per second
+let activeRequests = 0;
+let lastRequestStartTime = 0;
+const requestQueue: Array<{ task: () => Promise<any>; resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
 
-// Reset request count periodically
-setInterval(() => {
-  requestCount = 0;
-  lastRequestTime = Date.now();
-}, RATE_LIMIT_RESET);
-
-/**
- * Helper function to handle rate limiting before making requests
- */
-async function handleRateLimit() {
-  // If we've made too many requests recently, add a delay
-  if (requestCount >= RATE_LIMIT_MAX) {
-    const timeSinceLastReset = Date.now() - lastRequestTime;
-    if (timeSinceLastReset < RATE_LIMIT_RESET) {
-      // Wait until the next rate limit window
-      const waitTime = RATE_LIMIT_RESET - timeSinceLastReset + 50; // Add buffer
-      console.log(`Rate limit approaching, waiting ${waitTime}ms before next request`);
-      await delay(waitTime);
-      requestCount = 0;
-      lastRequestTime = Date.now();
-    }
+async function processQueue() {
+  if (activeRequests >= MAX_CONCURRENT_REQUESTS || requestQueue.length === 0) {
+    return; // Wait if max concurrency reached or queue is empty
   }
-  
-  // Increment the request counter
-  requestCount++;
+
+  const now = Date.now();
+  const timeSinceLastStart = now - lastRequestStartTime;
+  const delayNeeded = Math.max(0, MIN_REQUEST_INTERVAL_MS - timeSinceLastStart);
+
+  const { task, resolve, reject } = requestQueue.shift()!;
+
+  const executeTask = async () => {
+    activeRequests++;
+    lastRequestStartTime = Date.now();
+    console.log(`[RateLimiter] Starting request. Active: ${activeRequests}, Queue: ${requestQueue.length}`);
+
+    try {
+      const result = await task();
+      resolve(result);
+    } catch (error) {
+      reject(error);
+    } finally {
+      activeRequests--;
+      console.log(`[RateLimiter] Finished request. Active: ${activeRequests}, Queue: ${requestQueue.length}`);
+      // Immediately try to process the next item if possible
+      setTimeout(processQueue, 0); 
+    }
+  };
+
+  if (delayNeeded > 0) {
+     console.log(`[RateLimiter] Delaying next request by ${delayNeeded}ms`);
+     setTimeout(executeTask, delayNeeded);
+  } else {
+     // Use setTimeout 0 to yield to the event loop before starting the next task immediately
+     setTimeout(executeTask, 0); 
+  }
 }
+
+// Function to schedule an Airtable request
+function scheduleRequest<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ task, resolve, reject });
+    console.log(`[RateLimiter] Queued request. Queue size: ${requestQueue.length}`);
+    // Attempt to process the queue immediately if slots are free and no delay needed
+    processQueue(); 
+  });
+}
+// --- End of New Rate Limiting Logic ---
 
 // Log configuration for debugging (remove in production)
 console.log(`API_KEY: ${API_KEY ? '******' + API_KEY.slice(-4) : 'missing'}`);
@@ -112,26 +133,20 @@ export interface Gallery extends BaseRecord {
 
 export interface Story extends BaseRecord {
   Title: string;
-  'Story ID'?: number | string;
-  Storytellers?: string[];
-  Media?: string[];
-  Watermark?: string;
-  Permissions?: string;
-  'Story Image'?: AirtableAttachment[];
   Status?: string;
   Created?: string;
+  'Story copy'?: string;
+  Media?: string[];
+  'Story Transcript'?: string;
   'Video Story Link'?: string;
   'Video Embed Code'?: string;
-  'Story Transcript'?: string;
-  'Story copy'?: string;
-  Themes?: string[];
-  Quotes?: string[];
-  'Theme Links'?: string[];
-  Geocode?: string;
-  Location?: string;
-  Shift?: string;
-  Description?: string;
-  Storyteller_id?: string;
+  'Location (from Media)'?: string;
+  Shifts?: string[];
+  'Link (from Galleries) (from Media)'?: string[];
+  'Story ID'?: number;
+  'Story Image'?: AirtableAttachment[];
+  'Transcript (from Media)'?: string[];
+  ShiftDetails?: Shift; // Added during processing in useStoriesData
 }
 
 export interface Tag extends BaseRecord {
@@ -232,10 +247,10 @@ export function isStory(record: any): record is Story {
     typeof record === 'object' &&
     typeof record.id === 'string' &&
     typeof record.Title === 'string' &&
-    (record['Video Embed Code'] === undefined || typeof record['Video Embed Code'] === 'string') &&
+    (record.Status === undefined || typeof record.Status === 'string') &&
+    (record.Created === undefined || typeof record.Created === 'string') &&
     (record['Story copy'] === undefined || typeof record['Story copy'] === 'string') &&
-    (record.Quotes === undefined || Array.isArray(record.Quotes)) &&
-    (record.Themes === undefined || Array.isArray(record.Themes))
+    (record.Media === undefined || Array.isArray(record.Media))
   );
 }
 
@@ -285,152 +300,123 @@ export class AirtableError extends Error {
 
 // Base fetching function with Pagination Handling
 export const fetchFromTable = async <T>(tableName: string, options: FetchOptions = {}): Promise<T[]> => {
-  await handleRateLimit();
-  
-  let allRecords: T[] = [];
-  
-  const processBatch = async (finalOptions: FetchOptions) => {
-    if (options.maxRecords && allRecords.length >= options.maxRecords) {
-      return;
-    }
-    
+  const fetchTask = async (): Promise<T[]> => {
+    let allRecordsInternal: T[] = [];
     try {
-      // Create properly formatted select object for Airtable
       const selectOptions: Record<string, any> = {};
-      
-      // Properly format maxRecords (number)
-      if (options.maxRecords) {
-        selectOptions.maxRecords = options.maxRecords;
+      // Apply options carefully - Airtable SDK might mutate the options object
+      const safeOptions = { ...options }; 
+      if (safeOptions.maxRecords) selectOptions.maxRecords = safeOptions.maxRecords;
+      if (safeOptions.pageSize) selectOptions.pageSize = safeOptions.pageSize;
+      if (safeOptions.view) selectOptions.view = safeOptions.view;
+      if (safeOptions.fields && Array.isArray(safeOptions.fields)) selectOptions.fields = safeOptions.fields;
+      if (safeOptions.filterByFormula) selectOptions.filterByFormula = safeOptions.filterByFormula;
+      if (safeOptions.sort && Array.isArray(safeOptions.sort)) {
+        selectOptions.sort = safeOptions.sort;
+      } else if (safeOptions.sortField && safeOptions.sortDirection) {
+        selectOptions.sort = [{ field: safeOptions.sortField, direction: safeOptions.sortDirection }];
       }
-      
-      // Properly format pageSize (number)
-      if (options.pageSize) {
-        selectOptions.pageSize = options.pageSize;
-      }
-      
-      // Properly format view (string)
-      if (options.view) {
-        selectOptions.view = options.view;
-      }
-      
-      // Properly format fields (array of strings)
-      if (options.fields) {
-        if (Array.isArray(options.fields)) {
-          selectOptions.fields = options.fields;
-        } else {
-          console.warn(`[fetchFromTable] Invalid fields format for ${tableName}: fields must be an array of strings`);
-        }
-      }
-      
-      // Properly format filterByFormula (string)
-      if (options.filterByFormula) {
-        selectOptions.filterByFormula = options.filterByFormula;
-      }
-      
-      // Properly format sort (array of objects)
-      if (options.sort && Array.isArray(options.sort)) {
-        selectOptions.sort = options.sort;
-      } else if (options.sortField && options.sortDirection) {
-        // Handle legacy sort format
-        selectOptions.sort = [{ field: options.sortField, direction: options.sortDirection }];
-      }
-      
-      // Initialize query with properly formatted options
+
       const query = base(tableName).select(selectOptions);
-      
-      const response = await query.all();
-      console.log(`[fetchFromTable] Successfully fetched from ${tableName}, got ${response.length} records`);
-      
-      if (response) {
-        // Map Airtable data format to our format
-        const records = response.map((record) => ({
+      // .all() handles pagination internally and returns all matching records (up to maxRecords if specified)
+      const response = await query.all(); 
+
+      console.log(`[fetchFromTable] Fetched ${response.length} raw records from ${tableName}`);
+
+      allRecordsInternal = response.map((record) => ({
           id: record.id,
           createdTime: record.createdTime,
           ...record.fields
-        }));
-        
-        allRecords = [...allRecords, ...records];
-      }
+      })) as T[];
+
+      console.log(`[fetchFromTable] Completed fetch from ${tableName}, returning ${allRecordsInternal.length} records`);
+      return allRecordsInternal;
+
     } catch (error) {
-      console.error(`[fetchFromTable] Error fetching ${tableName}:`, error);
-      
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 429) {
-          console.error('[fetchFromTable] Rate limit hit, adding delay');
-          await delay(2000);
-          return processBatch(finalOptions);
-        }
-        
-        if (error.response?.status === 404) {
-          throw new Error(`Table '${tableName}' not found`);
-        }
+      console.error(`[fetchFromTable] Error during Airtable fetch for ${tableName}:`, error);
+      if ((error as any).statusCode === 404) {
+         throw new Error(`Table '${tableName}' not found or query invalid.`);
       }
-      
-      throw new Error(`Failed to fetch records from ${tableName}`);
+      // Let the rate limiter handle retries if needed, just throw for other errors
+      throw new Error(`Failed to fetch records from ${tableName}: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
-  
-  await processBatch(options);
-  
-  // Log completion
-  console.log(`[fetchFromTable] Completed fetch from ${tableName}, returned ${allRecords.length} records`);
-  
-  return allRecords;
+
+  // Schedule the entire fetch operation using the rate limiter
+  return scheduleRequest(fetchTask);
 };
 
 // Create a new record
 export async function createRecord<T extends BaseRecord>(tableName: string, data: Omit<T, 'id' | 'createdTime'>): Promise<T> {
-  await handleRateLimit();
-  
-  try {
-    const response = await base(tableName).create([{ fields: data }]);
-    
-    return {
-      id: response[0].id,
-      createdTime: response[0].createdTime,
-      ...data
-    } as T;
-  } catch (error) {
-    console.error(`Error creating record in ${tableName}:`, error);
-    throw new Error(`Failed to create record in ${tableName}`);
-  }
+  if (!base) throw new AirtableError('Airtable base is not initialized', 500);
+
+  const createTask = async (): Promise<T> => {
+    try {
+      const response = await base(tableName).create([{ fields: data }]);
+      if (!response || response.length === 0) {
+         throw new Error('No record created or invalid response from Airtable.');
+      }
+      // Ensure fields are included in the return value
+      const createdRecord = response[0];
+      return {
+        id: createdRecord.id,
+        createdTime: createdRecord.createdTime,
+        ...createdRecord.fields 
+      } as T;
+    } catch (error) {
+      console.error(`Error creating record in ${tableName}:`, error);
+      throw new Error(`Failed to create record in ${tableName}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  return scheduleRequest(createTask);
 }
 
 // Update an existing record
 export async function updateRecord<T extends BaseRecord>(tableName: string, id: string, data: Partial<Omit<T, 'id' | 'createdTime'>>): Promise<T> {
-  await handleRateLimit();
-  
-  try {
-    const response = await base(tableName).update([{ id, fields: data }]);
-    
-    return {
-      id: response[0].id,
-      ...response[0].fields
-    } as T;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error(`Error updating record in ${tableName}:`, error.response?.data || error.message);
-    } else {
-      console.error(`Error updating record in ${tableName}:`, error);
+  if (!base) throw new AirtableError('Airtable base is not initialized', 500);
+
+  const updateTask = async (): Promise<T> => {
+    try {
+      // Use `update` which expects an array of objects with id and fields
+      const response = await base(tableName).update([{ id, fields: data }]);
+       if (!response || response.length === 0) {
+         throw new Error(`No record updated or invalid response for ID ${id} in ${tableName}.`);
+       }
+      // Ensure fields are included in the return value
+      const updatedRecord = response[0];
+      return {
+        id: updatedRecord.id,
+        ...updatedRecord.fields 
+      } as T;
+    } catch (error) {
+      console.error(`Error updating record ${id} in ${tableName}:`, error);
+      throw new Error(`Failed to update record ${id} in ${tableName}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    throw new Error(`Failed to update record ${id} in ${tableName}`);
-  }
+  };
+  return scheduleRequest(updateTask);
 }
 
 // Delete a record
-export async function deleteRecord(tableName: string, id: string): Promise<void> {
-  await handleRateLimit();
-  
-  try {
-    await base(tableName).destroy([id]);
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error(`Error deleting record from ${tableName}:`, error.response?.data || error.message);
-    } else {
-      console.error(`Error deleting record from ${tableName}:`, error);
+export async function deleteRecord(tableName: string, id: string): Promise<{ id: string, deleted: boolean }> {
+  if (!base) throw new AirtableError('Airtable base is not initialized', 500);
+
+  const deleteTask = async (): Promise<{ id: string, deleted: boolean }> => {
+    try {
+      const response = await base(tableName).destroy([id]);
+      if (!response || response.length === 0) {
+         throw new Error(`No record deleted or invalid response for ID ${id} in ${tableName}.`);
+      }
+      return {
+        id: response[0].id,
+        deleted: response[0].deleted
+      };
+    } catch (error) {
+      console.error(`Error deleting record ${id} from ${tableName}:`, error);
+      throw new Error(`Failed to delete record ${id} from ${tableName}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    throw new Error(`Failed to delete record ${id} from ${tableName}`);
-  }
+  };
+  return scheduleRequest(deleteTask);
 }
 
 // Update fetchMedia return type and logic
@@ -500,136 +486,42 @@ export async function fetchGalleries(): Promise<Gallery[]> {
 
 export async function fetchStories(): Promise<Story[]> {
   try {
-    // Fetch all stories (Reverted from debug filter)
-    const records = await fetchFromTable<Story>('Stories');
+    const fieldsToFetch = [
+      'Title',
+      'Status',
+      'Created',
+      'Story copy',
+      'Media',
+      'Story Transcript',
+      'Video Story Link',
+      'Video Embed Code',
+      'Location (from Media)',
+      'Shifts',
+      'Link (from Galleries) (from Media)',
+      'Story ID',
+      'Story Image',
+      'Transcript (from Media)'
+    ];
+
+    console.log(`[fetchStories] Attempting to fetch with fields:`, fieldsToFetch);
+
+    const records = await fetchFromTable<Story>('Stories', { fields: fieldsToFetch });
     
-    // Focused logging for Geocode field
-    console.log('[fetchStories] Examining stories for Geocode field:');
-    records.slice(0, 5).forEach((story, idx) => {
-      // Check if Geocode field exists and log relevant location fields
-      const locationKeys = Object.keys(story).filter(k => 
-        k.toLowerCase().includes('geo') || 
-        k.toLowerCase().includes('lat') || 
-        k.toLowerCase().includes('lon') || 
-        k.toLowerCase().includes('location')
-      );
-      
-      console.log(`Story #${idx} "${story.Title}" (id: ${story.id}):`, {
-        hasGeocode: !!story.Geocode,
-        geocodeValue: story.Geocode,
-        locationFieldsFound: locationKeys,
-        locationValues: locationKeys.reduce((acc, key) => ({
-          ...acc,
-          [key]: (story as any)[key]
-        }), {})
-      });
-    });
-    
-    // Continue with existing logging and processing
-    // Add detailed logging for each record's theme field
-    console.log('[fetchStories] Examining records for theme fields:');
-    records.slice(0, 3).forEach((record, index) => {
-      console.log(`[fetchStories] Story #${index} titled "${record.Title}":`);
-      
-      // Check for Geocode field
-      console.log('  -> Has Geocode:', !!record.Geocode);
-      if (record.Geocode) {
-        console.log('  -> Geocode field value:', record.Geocode);
-      }
-      
-      // Check for any fields related to coordinates
-      const allFields = Object.keys(record);
-      const possibleLocationFields = allFields.filter(field => 
-        field.toLowerCase().includes('lat') || 
-        field.toLowerCase().includes('lon') ||
-        field.toLowerCase().includes('geo') ||
-        field.toLowerCase().includes('coord')
-      );
-      
-      if (possibleLocationFields.length > 0) {
-        console.log('  -> Possible location fields:', possibleLocationFields);
-        possibleLocationFields.forEach(field => {
-          console.log(`  -> ${field} value:`, (record as any)[field]);
-        });
-      }
-      
-      // Check for theme field as before
-      console.log('  -> Has Themes:', !!record.Themes);
-      if (record.Themes) {
-        console.log('  -> Themes field value:', JSON.stringify(record.Themes));
-      }
-      // Check for alternative field names that might contain themes
-      const possibleThemeFields = allFields.filter(field => 
-        field.includes('Theme') || field.includes('theme')
-      );
-      if (possibleThemeFields.length > 0) {
-        console.log('  -> Possible theme fields:', possibleThemeFields);
-        possibleThemeFields.forEach(field => {
-          console.log(`  -> ${field} value:`, JSON.stringify((record as any)[field]));
-        });
-      }
-    });
-    
-    // Keep the detailed logging
-    console.log('[fetchStories] Raw records fetched:', records.length, records.map((r: Story) => ({ id: r.id, Title: r.Title })) );
-    
-    // Filter valid stories but also fix theme field if needed
-    const validStories = records.filter(record => {
-        const isValid = isStory(record);
-        
-        if (!isValid) {
-            console.warn('[fetchStories] Filtering out invalid story record:', (record as Story).id, (record as Story).Title, record); 
-        }
-        return isValid;
-    }).map(story => {
-        // If the data is coming in with a different field name, fix it
-        // This maps potential alternate field names to the correct Themes field
-        const storyRecord = story as any;
-        
-        // Check for alternative field names
-        if (!story.Themes) {
-            // Look for possible alternate field names
-            const alternateFields = [
-                'themes', // lowercase
-                'Theme', // singular
-                'theme', // singular lowercase
-                'theme_ids', // Snake case
-                'themeIds', // camelCase
-                'ThemeIds', // PascalCase
-                'Theme Ids', // Space separated
-                'Theme_Ids', // underscore separated
-                'Theme IDs', // With caps
-            ];
-            
-            for (const field of alternateFields) {
-                if (storyRecord[field] && Array.isArray(storyRecord[field])) {
-                    console.log(`[fetchStories] Found themes in alternate field "${field}" for story "${story.Title}":`, storyRecord[field]);
-                    story.Themes = storyRecord[field];
-                    break;
-                }
-            }
-        }
-        
-        // If there's a Theme Links field coming from Airtable, use it
-        if (storyRecord['Theme Links'] && Array.isArray(storyRecord['Theme Links'])) {
-            console.log(`[fetchStories] Found themes in 'Theme Links' field for story "${story.Title}":`, storyRecord['Theme Links']);
-            story.Themes = storyRecord['Theme Links'];
-        }
-        
-        return story;
-    });
-    
-    console.log('[fetchStories] Returning valid stories:', validStories.length, validStories.map((r: Story) => ({ 
-        id: r.id, 
-        Title: r.Title,
-        hasThemes: !!r.Themes, 
-        themesCount: r.Themes?.length || 0
-    }))); 
-    
-    return validStories;
+    if (records && records.length > 0) {
+      console.log('[fetchStories] First record fields:', Object.keys(records[0]));
+      console.log('[fetchStories] Shifts data:', records[0].Shifts);
+    }
+
+    return records.filter(isStory);
 
   } catch (error) {
-    console.error('Error fetching stories:', error);
+    if (error instanceof Error) {
+      console.error('[fetchStories] Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+    }
     throw error;
   }
 }

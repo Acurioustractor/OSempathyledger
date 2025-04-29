@@ -1,128 +1,195 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Heading, Text, Button, Flex, Badge, HStack, Input, InputGroup, InputLeftElement, Icon, useDisclosure, Alert, AlertIcon, AlertTitle, AlertDescription, CloseButton } from '@chakra-ui/react';
+import { Box, Heading, Text, Button, Flex, Badge, HStack, Input, InputGroup, InputLeftElement, Icon } from '@chakra-ui/react';
 import { SearchIcon } from '@chakra-ui/icons';
 import GoogleMap from './maps/GoogleMap';
 import InfoWindowContent from './maps/InfoWindowContent';
-import { useAdBlockerDetection } from './maps/hooks/useAdBlockerDetection';
-import AdBlockerWarning from './maps/components/AdBlockerWarning';
 import { Shift } from '../types/shifts';
+import { Story } from '../services/airtable';
 
 interface MapViewProps {
-  shifts: Shift[];
+  shifts?: Shift[];
+  stories?: Story[];
   onShiftSelect?: (shiftId: string) => void;
+  onStorySelect?: (storyId: string) => void;
   selectedShiftId?: string;
   className?: string;
   style?: React.CSSProperties;
   height?: string;
 }
 
+// Helper to parse coordinate strings
+const parseCoordinate = (coord: string | number | undefined | null): number | null => {
+  if (typeof coord === 'number') return coord;
+  if (typeof coord === 'string') {
+    const parsed = parseFloat(coord);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+};
+
 /**
  * MapView Component
- * Displays shifts on a map and allows selecting them
+ * Displays shifts or stories on a map and allows selecting them
  */
 const MapView: React.FC<MapViewProps> = ({
-  shifts,
+  shifts = [],
+  stories = [],
   onShiftSelect,
+  onStorySelect,
   selectedShiftId: propSelectedShiftId,
   className,
   style,
   height = '500px',
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedShiftId, setSelectedShiftId] = useState<string | null>(propSelectedShiftId || null);
-  const [adBlockerDismissed, setAdBlockerDismissed] = useState(false);
-  
-  // Use the ad blocker detection hook
-  const isAdBlocked = useAdBlockerDetection();
-  // Always set to false to hide warnings
-  const showAdBlockerWarning = false;
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(propSelectedShiftId || null);
   
   // Update local state when prop changes
   useEffect(() => {
-    if (propSelectedShiftId) {
-      setSelectedShiftId(propSelectedShiftId);
-    }
+    setSelectedItemId(propSelectedShiftId || null);
   }, [propSelectedShiftId]);
   
-  // Filter out shifts without location data - with enhanced checking for coordinates
-  const shiftsWithLocation = useMemo(() => {
-    console.log('Checking shifts for map:', shifts);
+  // Convert stories to a structure compatible with the map component (Shift-like)
+  const convertedStoriesToMapItems = useMemo(() => {
+    if (!stories || stories.length === 0) return [];
     
-    if (!shifts || !Array.isArray(shifts)) {
-      console.warn('No shifts provided to MapView');
-      return [];
-    }
-    
-    return shifts.filter(shift => {
-      if (!shift) return false;
-      
-      // Check for direct latitude/longitude
-      if (typeof shift.latitude === 'number' && typeof shift.longitude === 'number') {
-        return true;
-      }
-      
-      // Check for Latitude/Longitude (PascalCase)
-      if (typeof shift.Latitude === 'number' && typeof shift.Longitude === 'number') {
-        return true;
-      }
-      
-      // Check for string lat/lng that can be parsed to numbers
-      if (typeof shift.latitude === 'string' && typeof shift.longitude === 'string') {
-        const lat = parseFloat(shift.latitude);
-        const lng = parseFloat(shift.longitude);
-        if (!isNaN(lat) && !isNaN(lng)) {
-          // Modify the shift object to have proper numeric coordinates
-          shift.latitude = lat;
-          shift.longitude = lng;
-          return true;
+    console.log('[MapView] Converting stories to map items:', stories.length);
+    return stories
+      .map(story => {
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+
+        // 1. Check direct Lat/Lng fields (PascalCase or camelCase)
+        latitude = parseCoordinate(story.Latitude ?? (story as any).latitude);
+        longitude = parseCoordinate(story.Longitude ?? (story as any).longitude);
+
+        // 2. If no direct coordinates, check Geocode field
+        if (latitude === null || longitude === null) {
+          if (story.Geocode && typeof story.Geocode === 'string' && story.Geocode.includes(',')) {
+            const parts = story.Geocode.split(',');
+            const parsedLat = parseCoordinate(parts[0]);
+            const parsedLng = parseCoordinate(parts[1]);
+            if (parsedLat !== null && parsedLng !== null) {
+              latitude = parsedLat;
+              longitude = parsedLng;
+            } else {
+              // console.log(`[MapView] Failed to parse Geocode for story ${story.id}:`, story.Geocode);
+            }
+          }
         }
-      }
-      
-      // Check for string Lat/Lng in PascalCase
-      if (typeof shift.Latitude === 'string' && typeof shift.Longitude === 'string') {
-        const lat = parseFloat(shift.Latitude);
-        const lng = parseFloat(shift.Longitude);
-        if (!isNaN(lat) && !isNaN(lng)) {
-          // Modify the shift object to have proper numeric coordinates
-          shift.latitude = lat;
-          shift.longitude = lng;
-          return true;
+
+        // 3. If still no coordinates, check linked ShiftDetails (if available)
+        if ((latitude === null || longitude === null) && (story as any).ShiftDetails) {
+          const shiftDetails = (story as any).ShiftDetails as Shift; // Cast to Shift type
+          
+          // --- START NEW GEOCODE DECODING LOGIC ---
+          if (shiftDetails.Geocode && typeof shiftDetails.Geocode === 'string') {
+            try {
+              const decodedString = atob(shiftDetails.Geocode); // Decode Base64
+              const parsedData = JSON.parse(decodedString); // Parse JSON
+              
+              // Check if parsed data has the expected structure with lat/lng
+              if (parsedData && typeof parsedData === 'object' && parsedData.o?.lat && parsedData.o?.lng) {
+                const parsedLat = parseCoordinate(parsedData.o.lat);
+                const parsedLng = parseCoordinate(parsedData.o.lng);
+                
+                if (parsedLat !== null && parsedLng !== null) {
+                  latitude = parsedLat;
+                  longitude = parsedLng;
+                  // console.log(`[MapView] Successfully decoded Geocode for story ${story.id}:`, latitude, longitude);
+                } else {
+                   console.warn(`[MapView] Parsed lat/lng from decoded Geocode are invalid for story ${story.id}:`, parsedData.o.lat, parsedData.o.lng);
+                }
+              } else {
+                 console.warn(`[MapView] Decoded Geocode for story ${story.id} does not have expected format:`, parsedData);
+              }
+            } catch (error) {
+              console.error(`[MapView] Error decoding/parsing Geocode for story ${story.id}:`, error, 'Raw Geocode:', shiftDetails.Geocode);
+            }
+          } else {
+             // console.log(`[MapView] ShiftDetails for story ${story.id} missing Geocode field.`);
+          }
+          // --- END NEW GEOCODE DECODING LOGIC ---
+          
+          // Fallback check for direct lat/lng on shift (if decoding failed or wasn't present)
+          // This might be removable if Geocode is the only source now.
+          if (latitude === null || longitude === null) {
+             latitude = parseCoordinate(shiftDetails.latitude ?? shiftDetails.Latitude);
+             longitude = parseCoordinate(shiftDetails.longitude ?? shiftDetails.Longitude);
+             // if (latitude !== null && longitude !== null) {
+             //    console.log(`[MapView] Using direct lat/lng from ShiftDetails for story ${story.id}`);
+             // }
+          }
         }
-      }
+
+        // If we have valid coordinates, create the map item
+        if (latitude !== null && longitude !== null) {
+          return {
+            id: story.id,
+            name: story.Title || 'Untitled Story',
+            address: story.Location || (story as any)['Location (from Media)'] || 'Unknown Location',
+            latitude: latitude,
+            longitude: longitude,
+            color: story.Themes?.length ? 'blue' : 'gray',
+            // Keep a reference to the original story or necessary details
+            originalStory: story 
+          } as Shift; // Use Shift type for compatibility with GoogleMap component for now
+        }
+        
+        // console.log(`[MapView] Story ${story.id} ('${story.Title}') has no valid coordinates.`);
+        return null; // Exclude stories without valid coordinates
+      })
+      .filter((item): item is Shift => item !== null); // Filter out nulls and type guard
       
-      // No valid coordinates found
-      return false;
-    });
-  }, [shifts]);
+  }, [stories]);
   
-  // Filter shifts based on search term
-  const filteredShifts = useMemo(() => {
-    if (!searchTerm) return shiftsWithLocation;
+  // Determine which items to display based on props
+  const itemsToDisplay = useMemo(() => {
+      return stories.length > 0 ? convertedStoriesToMapItems : shifts;
+  }, [stories, shifts, convertedStoriesToMapItems]);
+  
+  // Filter out items without valid location data (This check might be redundant now)
+  const itemsWithLocation = useMemo(() => {
+    return itemsToDisplay.filter(item => 
+        parseCoordinate(item.latitude ?? item.Latitude) !== null && 
+        parseCoordinate(item.longitude ?? item.Longitude) !== null
+    );
+  }, [itemsToDisplay]);
+  
+  // Filter items based on search term
+  const filteredItems = useMemo(() => {
+    if (!searchTerm) return itemsWithLocation;
     
     const lowerSearchTerm = searchTerm.toLowerCase();
-    return shiftsWithLocation.filter(shift => 
-      (shift.name && shift.name.toLowerCase().includes(lowerSearchTerm)) ||
-      (shift.address && shift.address.toLowerCase().includes(lowerSearchTerm))
+    return itemsWithLocation.filter(item => 
+      (item.name && item.name.toLowerCase().includes(lowerSearchTerm)) ||
+      (item.address && item.address.toLowerCase().includes(lowerSearchTerm))
     );
-  }, [shiftsWithLocation, searchTerm]);
+  }, [itemsWithLocation, searchTerm]);
   
-  // Handle marker click
-  const handleMarkerClick = (shift: Shift) => {
-    setSelectedShiftId(shift.id);
-    if (onShiftSelect) {
-      onShiftSelect(shift.id);
+  // Handle marker click - call the appropriate callback
+  const handleMarkerClick = (item: Shift) => { // item is Shift-like
+    setSelectedItemId(item.id);
+    if (stories.length > 0 && onStorySelect) {
+      // If we're showing stories, call onStorySelect with the original story ID
+      onStorySelect(item.id);
+    } else if (shifts.length > 0 && onShiftSelect) {
+      // If we're showing shifts, call onShiftSelect
+      onShiftSelect(item.id);
     }
   };
   
-  // Render info window content
-  const renderInfoContent = (shift: Shift) => {
-    return <InfoWindowContent shift={shift} />;
+  // Render info window content (uses shift prop)
+  const renderInfoContent = (item: Shift) => {
+    // Pass the item (which is Shift-like) to InfoWindowContent
+    return <InfoWindowContent shift={item} />;
   };
   
-  // Handle dismissing the ad blocker warning
-  const handleDismissAdBlockerWarning = () => {
-    setAdBlockerDismissed(true);
-  };
+  // Determine the appropriate heading and context
+  const isStoryMode = stories.length > 0;
+  const mapTitle = isStoryMode ? 'Stories Map' : 'Shifts Map';
+  const searchPlaceholder = `Search ${isStoryMode ? 'stories' : 'shifts'} by name or address`;
+  const itemsCount = `${filteredItems.length} ${isStoryMode ? 'Stories' : 'Shifts'} Available`;
   
   return (
     <Box 
@@ -130,17 +197,17 @@ const MapView: React.FC<MapViewProps> = ({
       overflow="hidden" 
       boxShadow="md"
       position="relative"
+      style={style}
+      className={className}
     >
-      {/* Ad blocker warning disabled */}
-      
       <Box p={4} bg="white">
-        <Heading size="md" mb={2}>Shifts Map</Heading>
+        <Heading size="md" mb={2}>{mapTitle}</Heading>
         <InputGroup mb={4}>
           <InputLeftElement pointerEvents="none">
             <Icon as={SearchIcon} color="gray.400" />
           </InputLeftElement>
           <Input
-            placeholder="Search shifts by name or address"
+            placeholder={searchPlaceholder}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -148,43 +215,37 @@ const MapView: React.FC<MapViewProps> = ({
       </Box>
       
       <GoogleMap
-        shifts={filteredShifts}
-        selectedShiftId={selectedShiftId}
+        shifts={filteredItems} 
+        selectedShiftId={selectedItemId}
         onMarkerClick={handleMarkerClick}
         renderInfoContent={renderInfoContent}
         style={{ height: height }}
-        className={className}
       />
       
       <Box p={4} bg="white" maxH="300px" overflowY="auto">
         <Heading size="sm" mb={2}>
-          {filteredShifts.length} Shifts Available
+          {itemsCount}
         </Heading>
-        {filteredShifts.map(shift => (
+        {filteredItems.map(item => (
           <Box 
-            key={shift.id} 
+            key={item.id} 
             p={2} 
             borderBottom="1px" 
             borderColor="gray.100"
-            bg={selectedShiftId === shift.id ? "blue.50" : "white"}
+            bg={selectedItemId === item.id ? "blue.50" : "white"}
             cursor="pointer"
-            onClick={() => {
-              setSelectedShiftId(shift.id);
-              if (onShiftSelect) {
-                onShiftSelect(shift.id);
-              }
-            }}
+            onClick={() => handleMarkerClick(item)}
             transition="all 0.2s"
-            _hover={{ bg: selectedShiftId === shift.id ? "blue.50" : "gray.50" }}
+            _hover={{ bg: selectedItemId === item.id ? "blue.50" : "gray.50" }}
           >
             <Flex justify="space-between" align="center">
               <Box>
-                <Text fontWeight="medium">{shift.name}</Text>
-                <Text fontSize="sm" color="gray.600">{shift.address}</Text>
+                <Text fontWeight="medium">{item.name}</Text>
+                <Text fontSize="sm" color="gray.600">{item.address}</Text>
               </Box>
               <HStack>
-                <Badge colorScheme={shift.stories && shift.stories.length > 0 ? "blue" : "gray"}>
-                  {shift.stories ? shift.stories.length : 0} Stories
+                <Badge colorScheme={item.color || (isStoryMode ? "blue" : "gray")}>
+                  {isStoryMode ? 'Story' : `${item.stories ? item.stories.length : 0} Stories`}
                 </Badge>
               </HStack>
             </Flex>

@@ -13,11 +13,16 @@ import {
 } from '../config/maps';
 
 // Interface for the GoogleMaps window object
+// More specific type to potentially resolve linter error
+/*
 declare global {
   interface Window {
-    google?: any;
+    google?: {
+      maps?: typeof google.maps; // Declare maps as optional
+    };
   }
 }
+*/
 
 // Singleton pattern to ensure there's only one loader instance
 class GoogleMapsLoader {
@@ -213,61 +218,10 @@ class GoogleMapsLoader {
 
     // Create and return the load promise
     this.loadPromise = new Promise<void>((resolve, reject) => {
-      // Define a unique callback name
-      const callbackName = 'googleMapsInitialized';
-      this.debug(`Created callback name: ${callbackName}`);
-
-      // Set the callback function
-      (window as any)[callbackName] = () => {
-        this.debug('Google Maps callback triggered');
-        
-        // Ensure Google Maps is available
-        if (window.google && window.google.maps) {
-          const loadTime = Date.now() - this.loadStartTime;
-          this.debug(`Google Maps loaded successfully in ${loadTime}ms`);
-          this.isLoaded = true;
-          this.isLoading = false;
-          
-          // Execute any registered callbacks
-          this.debug(`Executing ${this.callbacks.length} registered callbacks`);
-          this.callbacks.forEach(callback => {
-            try {
-              callback();
-            } catch (e) {
-              console.error('Error in Google Maps callback:', e);
-            }
-          });
-          
-          // Clean up the callback
-          try {
-            this.debug('Cleaning up callback function');
-            delete (window as any)[callbackName];
-          } catch (e) {
-            (window as any)[callbackName] = undefined;
-          }
-          
-          resolve();
-        } else {
-          const error = new Error('Google Maps API loaded but not available on window');
-          console.error(error);
-          this.loadError = error.message;
-          this.isLoading = false;
-          
-          // Clean up the callback
-          try {
-            delete (window as any)[callbackName];
-          } catch (e) {
-            (window as any)[callbackName] = undefined;
-          }
-          
-          reject(error);
-        }
-      };
-
       // Create the script element
       this.debug('Creating script element');
       const script = document.createElement('script');
-      const apiUrl = `${this.getGoogleMapsApiUrl()}&callback=${callbackName}`;
+      const apiUrl = this.getGoogleMapsApiUrl(); // Load without callback parameter
       script.src = apiUrl;
       script.async = true;
       script.defer = true;
@@ -278,14 +232,6 @@ class GoogleMapsLoader {
         console.error(error, e);
         this.loadError = error.message;
         this.isLoading = false;
-        
-        // Clean up the callback
-        try {
-          delete (window as any)[callbackName];
-        } catch (err) {
-          (window as any)[callbackName] = undefined;
-        }
-        
         reject(error);
       };
       
@@ -293,51 +239,29 @@ class GoogleMapsLoader {
       this.debug('Appending script to document head');
       document.head.appendChild(script);
       
-      // Set intermediate check
-      setTimeout(() => {
-        if (!this.isLoaded && this.isLoading) {
-          this.debug('Intermediate check: Google Maps still loading after 2 seconds');
-          // Check for script element in DOM
-          const scriptElements = document.querySelectorAll(`script[src*="maps.googleapis.com"]`);
-          this.debug(`Found ${scriptElements.length} Google Maps script elements in the DOM`);
-        }
-      }, 2000);
-      
       // Set a safety timeout
       const TIMEOUT = 15000; // 15 seconds
       setTimeout(() => {
-        if (!this.isLoaded) {
-          this.debug(`Safety timeout reached after ${TIMEOUT}ms`);
+        if (!this.isLoaded && this.isLoading) { // Only act if still loading
+          this.debug(`Safety timeout reached after ${TIMEOUT}ms while still loading`);
           
-          // Check if Google Maps loaded but callback wasn't triggered
+          // Double-check if it loaded *just* before the timeout fired but onload didn't
           if (this.isGoogleMapsAvailable()) {
-            this.debug('Google Maps detected via safety timeout - it loaded but callback was not triggered');
-            this.isLoaded = true;
+            this.debug('Google Maps detected via safety timeout after loading state - resolving');
+            this.isLoaded = true; // Mark as loaded
             this.isLoading = false;
             
-            // Execute callbacks
-            this.callbacks.forEach(callback => {
-              try {
-                callback();
-              } catch (e) {
-                console.error('Error in Google Maps timeout callback:', e);
-              }
+            this.callbacks.forEach(callback => { // Still run callbacks
+              try { callback(); } catch (e) { console.error('Error in Google Maps timeout callback:', e); }
             });
-            
-            resolve();
-          } else if (this.isLoading) {
+            resolve(); // Resolve the promise
+          } else { 
+            // If really not loaded, reject
             const error = new Error(`Google Maps failed to load within ${TIMEOUT}ms timeout period`);
             console.error(error);
             this.loadError = error.message;
             this.isLoading = false;
             reject(error);
-          }
-          
-          // Clean up the callback either way
-          try {
-            delete (window as any)[callbackName];
-          } catch (e) {
-            (window as any)[callbackName] = undefined;
           }
         }
       }, TIMEOUT);
