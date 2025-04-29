@@ -9,6 +9,7 @@ import ThemePage from './pages/ThemePage'
 import QuotesPage from './pages/QuotesPage'
 import GalleryPage from './pages/GalleryPage'
 import StoriesPage from './pages/StoriesPage'
+import StoryDetailPage from './pages/StoryDetailPage'
 import TagsPage from './pages/TagsPage'
 import StorytellersPage from './pages/StorytellersPage'
 import StorytellerDetailPage from './pages/StorytellerDetailPage'
@@ -34,6 +35,7 @@ function App() {
           <Route path="/quotes" element={<QuotesPage />} />
           <Route path="/galleries" element={<GalleryPage />} />
           <Route path="/stories" element={<StoriesPage />} />
+          <Route path="/story/:id" element={<StoryDetailPage />} />
           <Route path="/tags" element={<TagsPage />} />
           <Route path="/test" element={<TestConnection />} />
           <Route path="/analysis" element={<AnalysisPage />} />

@@ -41,12 +41,15 @@ import {
   IconButton,
   Select,
   useToast,
+  Stack,
+  Avatar,
+  Link,
 } from '@chakra-ui/react'
 import { AddIcon, SearchIcon, DeleteIcon, EditIcon, ChevronDownIcon } from '@chakra-ui/icons'
 import { Story, updateRecord, deleteRecord, AirtableError } from '../services/airtable'
 import StoryForm from '../components/StoryForm'
 import MapView from '../components/MapView'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import useStoriesData from '../hooks/useStoriesData'
 
 const StoriesPage = () => {
@@ -60,6 +63,12 @@ const StoriesPage = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const navigate = useNavigate()
   const toast = useToast()
+  
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [mediaFilter, setMediaFilter] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [storytellerFilter, setStorytellerFilter] = useState<string>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
   
   // Form modal disclosure
   const { isOpen, onOpen, onClose } = useDisclosure()
@@ -185,9 +194,69 @@ const StoriesPage = () => {
   }
   
   const handleStoryView = (storyId: string) => {
-    navigate(`/stories/${storyId}`)
+    navigate(`/OSempathyledger/story/${storyId}`)
   }
   
+  // Get storyteller names for a story
+  const getStorytellersForStory = useCallback((story: Story) => {
+    // Check both Storyteller_id and Storytellers fields
+    let storytellerIds: string[] = [];
+    
+    if (story.Storyteller_id) {
+      storytellerIds = Array.isArray(story.Storyteller_id) 
+        ? story.Storyteller_id 
+        : [story.Storyteller_id];
+    } else if (story.Storytellers) {
+      storytellerIds = Array.isArray(story.Storytellers)
+        ? story.Storytellers
+        : [story.Storytellers];
+    }
+    
+    // If we have no storytellers, try to debug
+    if (storytellerIds.length === 0) {
+      console.log('No storyteller IDs found for story:', story.id, story.Title);
+      // Try to see if there are any storyteller-related fields
+      const storytellerFields = Object.keys(story).filter(key => 
+        key.toLowerCase().includes('storyteller')
+      );
+      if (storytellerFields.length > 0) {
+        console.log('Found potential storyteller fields:', storytellerFields);
+        console.log('Field values:', storytellerFields.map(field => ({ field, value: story[field] })));
+      }
+    }
+    
+    // Map storyteller IDs to actual storyteller objects
+    const storytellersFound = storytellerIds
+      .map(id => storytellers.find(s => s.id === id))
+      .filter(s => s) // Remove undefined entries
+      .map(s => ({
+        id: s!.id,
+        name: s!.Name || 'Unknown',
+        image: s!['File Profile Image']?.[0]?.url || s!['Profile Image']?.[0]?.url
+      }));
+      
+    if (storytellerIds.length > 0 && storytellersFound.length === 0) {
+      console.log('Found storyteller IDs but no matching storytellers:', storytellerIds);
+      console.log('Available storytellers:', storytellers.map(s => ({ id: s.id, name: s.Name })));
+    }
+    
+    return storytellersFound;
+  }, [storytellers]);
+
+  // Get unique storytellers for filter
+  const uniqueStorytellers = useMemo(() => {
+    const storytellerMap = new Map();
+    stories.forEach(story => {
+      const storyStorytellers = getStorytellersForStory(story);
+      storyStorytellers.forEach(s => {
+        if (!storytellerMap.has(s.id)) {
+          storytellerMap.set(s.id, s);
+        }
+      });
+    });
+    return Array.from(storytellerMap.values());
+  }, [stories, getStorytellersForStory]);
+
   const handleSort = (field: string) => {
     if (field === sortField) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
@@ -202,6 +271,23 @@ const StoriesPage = () => {
     if (field !== sortField) return null
     return sortDirection === 'asc' ? '↑' : '↓'
   }
+
+  // Get unique locations from stories
+  const uniqueLocations = useMemo(() => {
+    const locations = new Set<string>();
+    stories.forEach(story => {
+      const mediaLocation = typeof story['Location (from Media)'] === 'string' 
+        ? story['Location (from Media)'].trim() 
+        : '';
+      const storyLocation = typeof story.Location === 'string' 
+        ? story.Location.trim() 
+        : '';
+      
+      if (mediaLocation) locations.add(mediaLocation);
+      if (storyLocation && storyLocation !== mediaLocation) locations.add(storyLocation);
+    });
+    return Array.from(locations).sort();
+  }, [stories]);
 
   if (isLoading) {
     return (
@@ -250,152 +336,137 @@ const StoriesPage = () => {
         </HStack>
       </Flex>
 
-      {/* View selection tabs */}
-      <Tabs variant="enclosed" colorScheme="blue" mb={5}
-        index={currentView === 'list' ? 0 : 1}
-        onChange={(index) => setCurrentView(index === 0 ? 'list' : 'map')}
-      >
-        <TabList>
-          <Tab>List View</Tab>
-          <Tab>Map View</Tab>
-        </TabList>
-        <TabPanels>
-          <TabPanel p={0} pt={4}>
-            {/* List view */}
-            {displayedStories.length === 0 ? (
-              <Alert status="info">
-                <AlertIcon />
-                No stories found.
-              </Alert>
-            ) : (
-              <Box overflowX="auto">
-                <Table variant="simple">
-                  <Thead>
-                    <Tr>
-                      <Th cursor="pointer" onClick={() => handleSort('Title')}>
-                        Title {sortIndicator('Title')}
-                      </Th>
-                      <Th cursor="pointer" onClick={() => handleSort('Location')}>
-                        Location {sortIndicator('Location')}
-                      </Th>
-                      <Th cursor="pointer" onClick={() => handleSort('Storyteller')}>
-                        Storyteller {sortIndicator('Storyteller')}
-                      </Th>
-                      <Th>Actions</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {displayedStories.map((story) => (
-                      <Tr key={story.id} _hover={{ bg: 'gray.50' }}>
-                        <Td fontWeight="medium">
-                          <Text 
-                            as="a"
-                            color="blue.600" 
-                            cursor="pointer"
-                            onClick={() => handleStoryView(story.id)}
-                            _hover={{ textDecoration: 'underline' }}
-                          >
-                            {story.Title}
-                          </Text>
-                        </Td>
-                        <Td>{story.Location}</Td>
-                        <Td>
-                          {storytellers.find(s => s.id === story.Storyteller_id)?.Name || 'Unknown'}
-                        </Td>
-                        <Td>
-                          <HStack spacing={2}>
-                            <IconButton
-                              aria-label="Delete story"
-                              icon={<DeleteIcon />}
-                              size="sm"
-                              colorScheme="red"
-                              onClick={() => handleDeleteClick(story.id)}
-                            />
-                          </HStack>
-                        </Td>
-                      </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-              </Box>
-            )}
-          </TabPanel>
+      <Stack spacing={4} mb={4}>
+        <Flex gap={4}>
+          <Input
+            placeholder="Search stories..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            maxW="300px"
+          />
+          
+          <Select
+            value={storytellerFilter}
+            onChange={(e) => setStorytellerFilter(e.target.value)}
+            maxW="200px"
+          >
+            <option value="all">All Storytellers</option>
+            {uniqueStorytellers.map(storyteller => (
+              <option key={storyteller.id} value={storyteller.id}>
+                {storyteller.name}
+              </option>
+            ))}
+          </Select>
 
-          <TabPanel p={0} pt={4}>
-            {/* Map view */}
-            {console.log('Stories for map:', displayedStories.map(story => ({
-              id: story.id,
-              title: story.Title,
-              hasGeocode: !!story.Geocode,
-              geocode: story.Geocode,
-              hasLocation: !!(story.Latitude && story.Longitude),
-              latitude: story.Latitude,
-              longitude: story.Longitude
-            })))}
-            
-            {displayedStories.length === 0 ? (
-              <Alert status="info">
-                <AlertIcon />
-                No stories with location data found.
-              </Alert>
-            ) : (
-              <MapView 
-                shifts={displayedStories.filter(story => {
-                  // First check if there's geocode or direct coordinates
-                  if (story.Geocode || (story.Latitude && story.Longitude)) {
-                    return true;
-                  }
-                  
-                  // Then check for shift linked coordinates
-                  const hasShiftCoordinates = !!(
-                    story.ShiftDetails?.latitude && 
-                    story.ShiftDetails?.longitude
-                  );
-                  
-                  if (!hasShiftCoordinates) {
-                    console.log('Story without coordinates excluded from map:', story.id, story.Title);
-                  }
-                  
-                  return hasShiftCoordinates;
-                }).map(story => {
-                  // Extract coordinates from Geocode field if available and not already parsed
-                  let latitude = story.Latitude;
-                  let longitude = story.Longitude;
-                  
-                  if (!latitude && !longitude && story.Geocode) {
-                    try {
-                      const [lat, lng] = story.Geocode.split(',').map(s => parseFloat(s.trim()));
-                      if (!isNaN(lat) && !isNaN(lng)) {
-                        latitude = lat;
-                        longitude = lng;
-                      }
-                    } catch (e) {
-                      console.error('Failed to parse Geocode field:', story.Geocode);
-                    }
-                  }
-                  
-                  return {
-                    id: story.id,
-                    name: story.Title || 'Untitled Story',
-                    address: story.Location || '',
-                    latitude: latitude || (story.ShiftDetails?.latitude),
-                    longitude: longitude || (story.ShiftDetails?.longitude),
-                    stories: [story],
-                    storyCount: 1,
-                    // Add a color based on whether it has a theme
-                    color: story.Themes && story.Themes.length > 0 ? 'blue' : 'gray'
-                  };
-                })} 
-                height="600px"
-                onShiftSelect={(shiftId) => {
-                  // Navigate to story detail page when clicked on map
-                  navigate(`/stories/${shiftId}`);
-                }}
-              />
-            )}
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
+          <Select
+            value={locationFilter}
+            onChange={(e) => setLocationFilter(e.target.value)}
+            maxW="200px"
+          >
+            <option value="all">All Locations</option>
+            {uniqueLocations.map(location => (
+              <option key={location} value={location}>
+                {location}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            maxW="150px"
+          >
+            <option value="all">All Status</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+          </Select>
+
+          <Select
+            value={mediaFilter}
+            onChange={(e) => setMediaFilter(e.target.value)}
+            maxW="150px"
+          >
+            <option value="all">All Media</option>
+            <option value="video">Video</option>
+            <option value="image">Image</option>
+            <option value="transcript">Transcript</option>
+          </Select>
+
+          <Select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            maxW="150px"
+          >
+            <option value="all">All Dates</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+            <option value="year">This Year</option>
+          </Select>
+        </Flex>
+      </Stack>
+
+      <Table variant="simple">
+        <Thead>
+          <Tr>
+            <Th>Story</Th>
+            <Th>Storyteller</Th>
+            <Th>Location</Th>
+            <Th>Status</Th>
+            <Th>Created</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {displayedStories.map((story) => (
+            <Tr key={story.id}>
+              <Td>
+                <Link
+                  as={RouterLink}
+                  to={`/story/${story.id}`}
+                  color="blue.500"
+                  _hover={{ textDecoration: 'underline' }}
+                >
+                  {story.Title || 'Untitled Story'}
+                </Link>
+              </Td>
+              <Td>
+                <HStack spacing={2}>
+                  {getStorytellersForStory(story).length > 0 ? (
+                    getStorytellersForStory(story).map((storyteller, index) => (
+                      <HStack key={storyteller.id} spacing={2}>
+                        {storyteller.image && (
+                          <Avatar size="sm" src={storyteller.image} name={storyteller.name} />
+                        )}
+                        <Text>
+                          {storyteller.name}
+                          {index < getStorytellersForStory(story).length - 1 ? ', ' : ''}
+                        </Text>
+                      </HStack>
+                    ))
+                  ) : (
+                    <Text color="gray.500">No storyteller</Text>
+                  )}
+                </HStack>
+              </Td>
+              <Td>
+                {story['Location (from Media)'] || story.Location || '-'}
+              </Td>
+              <Td>
+                <Badge
+                  colorScheme={story.Status?.toLowerCase() === 'draft' ? 'orange' : 'green'}
+                >
+                  {story.Status || 'Unknown'}
+                </Badge>
+              </Td>
+              <Td>
+                {story.Created
+                  ? new Date(story.Created).toLocaleDateString()
+                  : '-'}
+              </Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
 
       {/* Form Modal */}
       <Modal isOpen={isOpen} onClose={onClose} size="xl">
