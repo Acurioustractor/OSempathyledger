@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Debug Stories API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        .status { 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .error { background-color: #fee; color: #c00; }
+        .success { background-color: #efe; color: #060; }
+        .warning { background-color: #ffe; color: #660; }
+        .info { background-color: #eef; color: #006; }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0052a3; }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 4px solid #0066cc;
+            background: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Debug Stories API - Orange Sky Empathy Ledger</h1>
+        
+        <div class="section">
+            <h2>Environment Check</h2>
+            <div id="env-status"></div>
+        </div>
+
+        <div class="section">
+            <h2>Test Direct API Call</h2>
+            <button onclick="testDirectAPI()">Test Airtable API Directly</button>
+            <div id="direct-result"></div>
+        </div>
+
+        <div class="section">
+            <h2>Test via fetchStories</h2>
+            <button onclick="testFetchStories()">Test fetchStories Function</button>
+            <div id="fetch-result"></div>
+        </div>
+
+        <div class="section">
+            <h2>Network Requests Log</h2>
+            <div id="network-log"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Check environment variables
+        window.checkEnvironment = function() {
+            const envDiv = document.getElementById('env-status');
+            
+            // These would need to be set in your actual environment
+            const apiKey = localStorage.getItem('VITE_AIRTABLE_API_KEY') || 'Not found in localStorage';
+            const baseId = localStorage.getItem('VITE_AIRTABLE_BASE_ID') || 'Not found in localStorage';
+            const tableName = localStorage.getItem('VITE_AIRTABLE_TABLE_NAME') || 'Not found in localStorage';
+            
+            envDiv.innerHTML = `
+                <div class="status info">
+                    <strong>Environment Variables Check:</strong><br>
+                    API Key: ${apiKey.substring(0, 10)}...<br>
+                    Base ID: ${baseId}<br>
+                    Table Name: ${tableName}<br>
+                    <br>
+                    <em>Note: For security, set these in your .env file, not localStorage</em>
+                </div>
+            `;
+        };
+
+        // Test direct API call
+        window.testDirectAPI = async function() {
+            const resultDiv = document.getElementById('direct-result');
+            const logDiv = document.getElementById('network-log');
+            
+            resultDiv.innerHTML = '<div class="status info">Testing direct API call...</div>';
+            
+            // You'll need to replace these with your actual values
+            const API_KEY = prompt('Enter your Airtable API Key:');
+            const BASE_ID = prompt('Enter your Airtable Base ID:');
+            
+            if (!API_KEY || !BASE_ID) {
+                resultDiv.innerHTML = '<div class="status error">API Key and Base ID are required!</div>';
+                return;
+            }
+            
+            const url = `https://api.airtable.com/v0/${BASE_ID}/Stories?pageSize=10`;
+            
+            try {
+                logDiv.innerHTML += `<div class="status info">REQUEST: GET ${url}</div>`;
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const responseText = await response.text();
+                let data;
+                
+                try {
+                    data = JSON.parse(responseText);
+                } catch (e) {
+                    throw new Error(`Invalid JSON response: ${responseText}`);
+                }
+                
+                logDiv.innerHTML += `<div class="status ${response.ok ? 'success' : 'error'}">
+                    RESPONSE: ${response.status} ${response.statusText}
+                </div>`;
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="status success">
+                            <strong>Success!</strong><br>
+                            Status: ${response.status}<br>
+                            Records found: ${data.records ? data.records.length : 0}<br>
+                            Has more pages: ${data.offset ? 'Yes' : 'No'}
+                        </div>
+                        <h3>Response Data:</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                    
+                    if (data.records && data.records.length > 0) {
+                        const firstRecord = data.records[0];
+                        resultDiv.innerHTML += `
+                            <h3>First Record Structure:</h3>
+                            <pre>${JSON.stringify(firstRecord, null, 2)}</pre>
+                            <h3>Available Fields:</h3>
+                            <pre>${JSON.stringify(Object.keys(firstRecord.fields || {}), null, 2)}</pre>
+                        `;
+                    }
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="status error">
+                            <strong>API Error!</strong><br>
+                            Status: ${response.status} ${response.statusText}<br>
+                            Error: ${data.error ? data.error.message || data.error : 'Unknown error'}
+                        </div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status error">
+                        <strong>Network Error!</strong><br>
+                        ${error.message}<br>
+                        <br>
+                        Common causes:<br>
+                        - CORS blocking (check browser console)<br>
+                        - Invalid API key or Base ID<br>
+                        - Network connectivity issues<br>
+                        - Rate limiting
+                    </div>
+                `;
+                logDiv.innerHTML += `<div class="status error">ERROR: ${error.message}</div>`;
+                console.error('Direct API Error:', error);
+            }
+        };
+
+        // Test fetchStories function
+        window.testFetchStories = async function() {
+            const resultDiv = document.getElementById('fetch-result');
+            resultDiv.innerHTML = `
+                <div class="status warning">
+                    This test requires the app to be running with proper environment variables.<br>
+                    Make sure your .env file contains:<br>
+                    - VITE_AIRTABLE_API_KEY<br>
+                    - VITE_AIRTABLE_BASE_ID<br>
+                    - VITE_AIRTABLE_TABLE_NAME<br>
+                    <br>
+                    Check the browser console for detailed logs.
+                </div>
+            `;
+        };
+
+        // Check environment on load
+        checkEnvironment();
+
+        // Log all fetch requests
+        const originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            const logDiv = document.getElementById('network-log');
+            const [url, options] = args;
+            
+            if (url.includes('airtable')) {
+                logDiv.innerHTML += `<div class="status info">
+                    FETCH: ${options?.method || 'GET'} ${url}<br>
+                    Headers: ${JSON.stringify(options?.headers || {}, null, 2)}
+                </div>`;
+            }
+            
+            return originalFetch.apply(this, args).then(response => {
+                if (url.includes('airtable')) {
+                    logDiv.innerHTML += `<div class="status ${response.ok ? 'success' : 'error'}">
+                        RESPONSE: ${response.status} ${response.statusText} for ${url}
+                    </div>`;
+                }
+                return response;
+            });
+        };
+    </script>
+</body>
+</html>

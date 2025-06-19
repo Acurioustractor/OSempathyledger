@@ -3,16 +3,23 @@ import { extendTheme } from '@chakra-ui/react'
 const theme = extendTheme({
   colors: {
     brand: {
-      50: '#f0f9ff',
-      100: '#e0f2fe',
-      200: '#bae6fd',
-      300: '#7dd3fc',
-      400: '#38bdf8',
-      500: '#0ea5e9',
-      600: '#0284c7',
-      700: '#0369a1',
-      800: '#075985',
-      900: '#0c4a6e',
+      50: '#fff8f1',
+      100: '#ffecd6',
+      200: '#ffd6ad',
+      300: '#ffb874',
+      400: '#ff9139',
+      500: '#ff6b0a', // Orange Sky primary orange
+      600: '#e55a00',
+      700: '#c44700',
+      800: '#a13800',
+      900: '#7f2c00',
+    },
+    orangeSky: {
+      primary: '#ff6b0a',
+      secondary: '#003366', // Deep blue for contrast
+      accent: '#ffb874',
+      light: '#fff8f1',
+      dark: '#7f2c00',
     },
   },
   fonts: {

@@ -69,7 +69,7 @@ const MediaForm: React.FC<MediaFormProps> = ({ onSubmit, initialData, isLoading 
     defaultValues: initialData ? {
       title: initialData.title,
       url: initialData.url,
-      type: initialData.type,
+      type: initialData.type as "video" | "image",
       description: initialData.description,
       themes: initialData.themes,
       tags: initialData.tags

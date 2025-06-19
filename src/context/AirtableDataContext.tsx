@@ -4,7 +4,9 @@ import {
   fetchThemes,
   fetchStorytellers,
   fetchMedia,
-  fetchShifts,
+  fetchShifts
+} from '../services/dataService';
+import {
   Theme,
   Storyteller,
   Media,

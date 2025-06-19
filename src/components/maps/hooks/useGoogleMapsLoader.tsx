@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getGoogleMapsApiKey, isGoogleMapsApiKeyAvailable, getGoogleMapsApiKeyError, isGoogleMapBlocked } from '../../../config/maps';
+import { isGoogleMapsApiKeyAvailable, getMissingApiKeyMessage, checkForGoogleMapsBlocker, GOOGLE_MAPS_API_KEY } from '../../../config/maps';
 
 export interface GoogleMapsLoadingState {
   isLoaded: boolean;
@@ -21,7 +21,7 @@ export const useGoogleMapsLoader = (): GoogleMapsLoadingState => {
       setLoadingState({
         isLoaded: false,
         isLoading: false,
-        loadError: new Error(getGoogleMapsApiKeyError()),
+        loadError: new Error(getMissingApiKeyMessage()),
         isBlocked: false,
       });
       return;
@@ -30,7 +30,7 @@ export const useGoogleMapsLoader = (): GoogleMapsLoadingState => {
     const loadGoogleMaps = async () => {
       try {
         // Check if Google Maps is blocked by an ad blocker
-        const isBlocked = await isGoogleMapBlocked();
+        const isBlocked = await checkForGoogleMapsBlocker();
         
         if (isBlocked) {
           setLoadingState({
@@ -54,7 +54,7 @@ export const useGoogleMapsLoader = (): GoogleMapsLoadingState => {
         }
 
         // Load Google Maps API
-        const googleMapsApiKey = getGoogleMapsApiKey();
+        const googleMapsApiKey = GOOGLE_MAPS_API_KEY;
         const script = document.createElement('script');
         script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=places`;
         script.async = true;

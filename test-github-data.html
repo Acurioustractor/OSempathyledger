@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Data Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        .data-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .story {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <h1>GitHub Data Test</h1>
+    <div id="status" class="status loading">Loading...</div>
+    
+    <div id="stories-section" class="data-section">
+        <h2>Stories</h2>
+        <div id="stories-count"></div>
+        <div id="stories-list"></div>
+    </div>
+
+    <div id="storytellers-section" class="data-section">
+        <h2>Storytellers</h2>
+        <div id="storytellers-count"></div>
+    </div>
+
+    <div id="themes-section" class="data-section">
+        <h2>Themes</h2>
+        <div id="themes-count"></div>
+    </div>
+
+    <div id="media-section" class="data-section">
+        <h2>Media</h2>
+        <div id="media-count"></div>
+    </div>
+
+    <script>
+        const GITHUB_BASE_URL = 'https://raw.githubusercontent.com/Acurioustractor/empathy-ledger-public-data/main';
+        
+        async function loadData() {
+            const status = document.getElementById('status');
+            
+            try {
+                // Load Stories
+                const storiesResponse = await fetch(`${GITHUB_BASE_URL}/Stories.json`);
+                const stories = await storiesResponse.json();
+                document.getElementById('stories-count').innerHTML = `<strong>Total: ${stories.length} stories</strong>`;
+                
+                // Show first 5 stories
+                const storiesList = document.getElementById('stories-list');
+                storiesList.innerHTML = '<h3>First 5 Stories:</h3>';
+                stories.slice(0, 5).forEach(story => {
+                    const storyDiv = document.createElement('div');
+                    storyDiv.className = 'story';
+                    storyDiv.innerHTML = `
+                        <strong>${story.fields?.Title || 'Untitled'}</strong><br>
+                        ID: ${story.id}<br>
+                        Created: ${story.fields?.Created || 'Unknown'}<br>
+                        Storytellers: ${story.fields?.Storytellers?.length || 0}
+                    `;
+                    storiesList.appendChild(storyDiv);
+                });
+
+                // Load Storytellers
+                const storytellersResponse = await fetch(`${GITHUB_BASE_URL}/Storytellers.json`);
+                const storytellers = await storytellersResponse.json();
+                document.getElementById('storytellers-count').innerHTML = `<strong>Total: ${storytellers.length} storytellers</strong>`;
+
+                // Load Themes
+                const themesResponse = await fetch(`${GITHUB_BASE_URL}/Themes.json`);
+                const themes = await themesResponse.json();
+                document.getElementById('themes-count').innerHTML = `<strong>Total: ${themes.length} themes</strong>`;
+
+                // Load Media
+                const mediaResponse = await fetch(`${GITHUB_BASE_URL}/Media.json`);
+                const media = await mediaResponse.json();
+                document.getElementById('media-count').innerHTML = `<strong>Total: ${media.length} media items</strong>`;
+
+                status.className = 'status success';
+                status.textContent = '✅ All data loaded successfully!';
+                
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = `❌ Error: ${error.message}`;
+                console.error('Error loading data:', error);
+            }
+        }
+
+        // Load data when page loads
+        loadData();
+    </script>
+</body>
+</html>

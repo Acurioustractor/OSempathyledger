@@ -251,9 +251,7 @@ if (typeof window !== 'undefined') {
 
 // Add type definition for the global window object
 interface GoogleMapsWindow extends Window {
-  google?: {
-    maps?: any;
-  };
+  google?: any;
   mapDiagnostics?: MapDiagnostics;
-  [callbackName: string]: unknown;
+  [key: string]: any;
 } 

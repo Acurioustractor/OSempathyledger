@@ -7,8 +7,15 @@ const BASE_ID = import.meta.env.VITE_AIRTABLE_BASE_ID;
 const TABLE_NAME = import.meta.env.VITE_AIRTABLE_TABLE_NAME;
 const BASE_URL = `https://api.airtable.com/v0/${BASE_ID}`;
 
-// Initialize Airtable
-const base = new Airtable({ apiKey: API_KEY }).base(BASE_ID || '');
+// Initialize Airtable conditionally
+let base: Airtable.Base | null = null;
+
+function initializeAirtable() {
+  if (!base && API_KEY && BASE_ID) {
+    base = new Airtable({ apiKey: API_KEY }).base(BASE_ID);
+  }
+  return base;
+}
 
 // --- New Rate Limiting Logic ---
 const MAX_CONCURRENT_REQUESTS = 3; // Reduced from 4
@@ -93,9 +100,12 @@ export interface BaseRecord {
 export interface Media extends BaseRecord {
   'File Name': string;
   type?: 'image' | 'video' | string;
+  Type?: 'image' | 'video' | string;
   description?: string;
   themes?: string[];
+  Themes?: string[];
   tags?: string[];
+  Tags?: string[];
   Summary?: string;
   Transcript?: string;
   Storytellers?: string[];
@@ -106,11 +116,17 @@ export interface Media extends BaseRecord {
   Location?: string;
   Project?: string;
   'Created At'?: string;
+  // Additional properties for compatibility
+  title?: string;
+  url?: string;
 }
 
 export interface Theme extends BaseRecord {
   'Theme Name': string;
+  Name?: string;
+  name?: string;
   Description?: string;
+  description?: string;
   'Related Media'?: string[];
   'Quotes (from Related Media)'?: string[];
 }
@@ -147,11 +163,15 @@ export interface Story extends BaseRecord {
   'Story Image'?: AirtableAttachment[];
   'Transcript (from Media)'?: string[];
   ShiftDetails?: Shift; // Added during processing in useStoriesData
+  Storytellers?: string[]; // Added for story-storyteller relationships
+  Themes?: string[]; // Added for story-theme relationships
 }
 
 export interface Tag extends BaseRecord {
   'Tag Name': string;
+  name?: string;
   description?: string;
+  Description?: string;
 }
 
 export interface AirtableAttachment {
@@ -202,6 +222,18 @@ export interface Shift extends BaseRecord {
   Location?: string;
   Address?: string;
   address?: string;
+  State?: string;
+  Geocode?: string;
+  // Additional properties that might be accessed
+  name?: string;
+  themes?: string[];
+  Themes?: string[];
+  stories?: Story[];
+  Stories?: Story[];
+  color?: string; // For map markers
+  // Timestamps for compatibility with types/shifts.ts
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // Type guards
@@ -301,6 +333,12 @@ export class AirtableError extends Error {
 // Base fetching function with Pagination Handling
 export const fetchFromTable = async <T>(tableName: string, options: FetchOptions = {}): Promise<T[]> => {
   const fetchTask = async (): Promise<T[]> => {
+    const airtableBase = initializeAirtable();
+    if (!airtableBase) {
+      console.warn('Airtable not initialized, returning empty array');
+      return [];
+    }
+    
     let allRecordsInternal: T[] = [];
     try {
       const selectOptions: Record<string, any> = {};
@@ -317,13 +355,13 @@ export const fetchFromTable = async <T>(tableName: string, options: FetchOptions
         selectOptions.sort = [{ field: safeOptions.sortField, direction: safeOptions.sortDirection }];
       }
 
-      const query = base(tableName).select(selectOptions);
+      const query = airtableBase(tableName).select(selectOptions);
       // .all() handles pagination internally and returns all matching records (up to maxRecords if specified)
       const response = await query.all(); 
 
       console.log(`[fetchFromTable] Fetched ${response.length} raw records from ${tableName}`);
 
-      allRecordsInternal = response.map((record) => ({
+      allRecordsInternal = response.map((record: any) => ({
           id: record.id,
           createdTime: record.createdTime,
           ...record.fields
@@ -348,16 +386,17 @@ export const fetchFromTable = async <T>(tableName: string, options: FetchOptions
 
 // Create a new record
 export async function createRecord<T extends BaseRecord>(tableName: string, data: Omit<T, 'id' | 'createdTime'>): Promise<T> {
-  if (!base) throw new AirtableError('Airtable base is not initialized', 500);
+  const airtableBase = initializeAirtable();
+  if (!airtableBase) throw new AirtableError('Airtable base is not initialized', 500);
 
   const createTask = async (): Promise<T> => {
     try {
-      const response = await base(tableName).create([{ fields: data }]);
+      const response = await airtableBase(tableName).create([{ fields: data as any }]);
       if (!response || response.length === 0) {
          throw new Error('No record created or invalid response from Airtable.');
       }
       // Ensure fields are included in the return value
-      const createdRecord = response[0];
+      const createdRecord = response[0] as any;
       return {
         id: createdRecord.id,
         createdTime: createdRecord.createdTime,
@@ -374,17 +413,18 @@ export async function createRecord<T extends BaseRecord>(tableName: string, data
 
 // Update an existing record
 export async function updateRecord<T extends BaseRecord>(tableName: string, id: string, data: Partial<Omit<T, 'id' | 'createdTime'>>): Promise<T> {
-  if (!base) throw new AirtableError('Airtable base is not initialized', 500);
+  const airtableBase = initializeAirtable();
+  if (!airtableBase) throw new AirtableError('Airtable base is not initialized', 500);
 
   const updateTask = async (): Promise<T> => {
     try {
       // Use `update` which expects an array of objects with id and fields
-      const response = await base(tableName).update([{ id, fields: data }]);
+      const response = await airtableBase(tableName).update([{ id, fields: data as any }]);
        if (!response || response.length === 0) {
          throw new Error(`No record updated or invalid response for ID ${id} in ${tableName}.`);
        }
       // Ensure fields are included in the return value
-      const updatedRecord = response[0];
+      const updatedRecord = response[0] as any;
       return {
         id: updatedRecord.id,
         ...updatedRecord.fields 
@@ -399,17 +439,18 @@ export async function updateRecord<T extends BaseRecord>(tableName: string, id: 
 
 // Delete a record
 export async function deleteRecord(tableName: string, id: string): Promise<{ id: string, deleted: boolean }> {
-  if (!base) throw new AirtableError('Airtable base is not initialized', 500);
+  const airtableBase = initializeAirtable();
+  if (!airtableBase) throw new AirtableError('Airtable base is not initialized', 500);
 
   const deleteTask = async (): Promise<{ id: string, deleted: boolean }> => {
     try {
-      const response = await base(tableName).destroy([id]);
+      const response = await airtableBase(tableName).destroy([id]);
       if (!response || response.length === 0) {
          throw new Error(`No record deleted or invalid response for ID ${id} in ${tableName}.`);
       }
       return {
-        id: response[0].id,
-        deleted: response[0].deleted
+        id: (response[0] as any).id,
+        deleted: (response[0] as any).deleted
       };
     } catch (error) {
       console.error(`Error deleting record ${id} from ${tableName}:`, error);
@@ -740,34 +781,34 @@ export async function updateShift(id: string, data: Partial<Omit<Shift, 'id' | '
 }
 
 // Type-specific delete functions for better type safety
-export async function deleteMedia(id: string): Promise<void> {
+export async function deleteMedia(id: string): Promise<{ id: string, deleted: boolean }> {
   return deleteRecord('Media', id);
 }
 
-export async function deleteTheme(id: string): Promise<void> {
+export async function deleteTheme(id: string): Promise<{ id: string, deleted: boolean }> {
   return deleteRecord('Themes', id);
 }
 
-export async function deleteQuote(id: string): Promise<void> {
+export async function deleteQuote(id: string): Promise<{ id: string, deleted: boolean }> {
   return deleteRecord('Quotes', id);
 }
 
-export async function deleteGallery(id: string): Promise<void> {
+export async function deleteGallery(id: string): Promise<{ id: string, deleted: boolean }> {
   return deleteRecord('Galleries', id);
 }
 
-export async function deleteStory(id: string): Promise<void> {
+export async function deleteStory(id: string): Promise<{ id: string, deleted: boolean }> {
   return deleteRecord('Stories', id);
 }
 
-export async function deleteTag(id: string): Promise<void> {
+export async function deleteTag(id: string): Promise<{ id: string, deleted: boolean }> {
   return deleteRecord('Manual Tags', id);
 }
 
-export async function deleteStoryteller(id: string): Promise<void> {
+export async function deleteStoryteller(id: string): Promise<{ id: string, deleted: boolean }> {
   return deleteRecord('Storytellers', id);
 }
 
-export async function deleteShift(id: string): Promise<void> {
+export async function deleteShift(id: string): Promise<{ id: string, deleted: boolean }> {
   return deleteRecord('Shifts', id);
 }

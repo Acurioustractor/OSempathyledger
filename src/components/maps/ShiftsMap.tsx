@@ -73,7 +73,7 @@ const ShiftsMap: React.FC<ShiftsMapProps> = ({
   const toast = useToast();
   
   // Custom hooks
-  const { isLoaded, isError, errorMessage } = useGoogleMapsLoader();
+  const { isLoaded, loadError } = useGoogleMapsLoader();
   const { isDetected: isAdBlocked } = useAdBlockerDetection();
   const showAdBlockerWarning = isAdBlocked && !adBlockerDismissed;
   const { mapRef, mapInitialized, initMap } = useMapInitializer({ isLoaded, mapContainer });
@@ -81,7 +81,10 @@ const ShiftsMap: React.FC<ShiftsMapProps> = ({
   // Initialize map instance when API is loaded
   const { mapInstance, mapContainerRef } = useMapInstance({
     isLoaded,
-    mapOptions: DEFAULT_MAP_OPTIONS,
+    mapOptions: {
+      ...DEFAULT_MAP_OPTIONS,
+      center: { lat: -35.2809, lng: 149.1300 }, // Ensure it's a literal
+    },
   });
   
   // Handle marker click
@@ -181,10 +184,10 @@ const ShiftsMap: React.FC<ShiftsMapProps> = ({
   }, [mapRef.current, mapInitialized, shifts, createMarkers]);
   
   // If there's an error loading the map
-  if (isError) {
+  if (error) {
     return (
       <MapContainer height={height} width={width} className={className}>
-        <MapErrorMessage message={errorMessage} />
+        <MapErrorMessage message={error || 'Failed to load map'} />
       </MapContainer>
     );
   }

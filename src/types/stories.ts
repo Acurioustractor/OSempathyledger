@@ -17,6 +17,7 @@ export interface Story {
   Title?: string;
   content?: string;
   Content?: string;
+  Description?: string;
   
   // Author properties
   author?: string;
@@ -41,6 +42,10 @@ export interface Story {
   
   // Location data
   location?: StoryLocation;
+  Latitude?: number;
+  Longitude?: number;
+  Geocode?: string;
+  Location?: string;
   
   // Media attachments
   images?: string[];

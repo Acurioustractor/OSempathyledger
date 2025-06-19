@@ -93,9 +93,8 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
     mapInstance: mapInstanceRef.current,
     shifts,
     selectedShiftId,
-    onMarkerClick: (shiftId) => {
-      const shift = shifts.find(s => s.id === shiftId || s.Id === shiftId);
-      if (shift) onMarkerClick(shift);
+    onMarkerClick: (shift) => {
+      onMarkerClick(shift);
     },
   });
   
@@ -199,7 +198,7 @@ const GoogleMap: React.FC<GoogleMapProps> = ({
       )}
       
       {/* Ad blocker warning (compact version) */}
-      {showAdBlockerWarning && !isBlocked && (
+      {showAdBlockerWarning && !isAdBlocked && (
         <AdBlockerWarning 
           compact={true}
           onDismiss={handleDismissAdBlockerWarning}

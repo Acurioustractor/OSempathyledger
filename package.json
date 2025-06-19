@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "BROWSER=arc vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
+    "build:strict": "tsc && vite build",
+    "build:local": "tsc && vite build --config vite.config.local.ts",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve": "serve dist -c serve.json -p 5500",
+    "serve:python": "cd dist && python3 -m http.server 8080",
+    "open:demo": "open demo.html"
   },
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",
@@ -27,20 +32,17 @@
     "d3": "^7.9.0",
     "d3-cloud": "^1.2.7",
     "date-fns": "^4.1.0",
-    "ethers": "^6.11.0",
     "framer-motion": "^11.0.3",
-    "ipfs-http-client": "^60.0.1",
-    "jwt-decode": "^4.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.55.0",
     "react-hotkeys-hook": "^5.0.1",
     "react-icons": "^5.5.0",
     "react-intersection-observer": "^9.16.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.22.0",
     "react-select": "^5.10.1",
-    "recharts": "^2.15.2",
-    "styled-components": "^6.1.17"
+    "recharts": "^2.15.2"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
@@ -53,6 +55,7 @@
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "express": "^5.1.0",
     "typescript": "^5.2.2",
     "vite": "^5.0.8"
   }

@@ -46,9 +46,9 @@ const InfoWindowContent: React.FC<InfoWindowContentProps> = ({
           <Box pt={2} width="100%">
             <Heading as="h4" size="xs" mb={1}>Recent Stories</Heading>
             <VStack align="start" spacing={1} maxH="120px" overflowY="auto" width="100%">
-              {stories.slice(0, 3).map(story => (
+              {stories.slice(0, 3).map((story, index) => (
                 <Box 
-                  key={story.id || story.Id} 
+                  key={String(story.id || story.Id || index)} 
                   p={2} 
                   bg="gray.50" 
                   borderRadius="md" 
@@ -59,7 +59,7 @@ const InfoWindowContent: React.FC<InfoWindowContentProps> = ({
                   </Text>
                   {story.Description && (
                     <Text fontSize="xs" color="gray.600" noOfLines={2}>
-                      {story.Description}
+                      {String(story.Description)}
                     </Text>
                   )}
                 </Box>
