@@ -1,57 +1,117 @@
-# Airtable Setup Guide
+# Airtable Setup Guide for Orange Sky Empathy Ledger v0.2
 
-## Quick Start
+## Overview
+This guide provides step-by-step instructions for setting up Airtable tables with the Orange Sky Empathy Ledger application, including MCP integration for live data updates.
 
-1. **Copy the environment file**
-   ```bash
-   cp .env.example .env
-   ```
+## Table Structure
 
-2. **Get your Airtable API Key**
-   - Go to https://airtable.com/account
-   - Click on "Generate API key" or copy your existing key
-   - Replace `your_airtable_api_key_here` in your `.env` file
+### 1. Stories Table
+| Field Name | Field Type | Notes |
+|------------|------------|-------|
+| Title | Single line text | Required, Primary field |
+| Status | Single select | Options: Draft, Review, Published, Archived |
+| Created | Date | Auto-generated |
+| Story copy | Long text | Rich text enabled |
+| Media | Link to Media | Multiple allowed |
+| Story Transcript | Long text | |
+| Video Story Link | URL | YouTube/Vimeo links |
+| Video Embed Code | Long text | |
+| Location | Lookup | From linked Media |
+| Shifts | Link to Shifts | Multiple allowed |
+| Storytellers | Link to Storytellers | Multiple allowed |
+| Themes | Link to Themes | Multiple allowed |
+| Story Image | Attachment | Cover image |
+| Tags | Link to Tags | Multiple allowed |
+| Featured | Checkbox | For homepage display |
+| Orange Sky Content | Checkbox | Official content flag |
 
-3. **Get your Base ID**
-   - Go to https://airtable.com/api
-   - Select your base
-   - The Base ID is shown in the introduction (starts with `app`)
-   - Replace `your_airtable_base_id_here` in your `.env` file
+### 2. Wiki Pages Table (NEW)
+| Field Name | Field Type | Notes |
+|------------|------------|-------|
+| Title | Single line text | Required, Primary field |
+| Slug | Single line text | URL-friendly identifier |
+| Content | Long text | Markdown content |
+| Category | Single select | Options: About, Process, Impact, Resources |
+| Parent Page | Link to Wiki Pages | For nested pages |
+| Order | Number | For sorting |
+| Status | Single select | Options: Draft, Published |
+| Last Modified | Date | Auto-updated |
+| Modified By | Single line text | User who made changes |
+| Featured Image | Attachment | Optional |
+| Meta Description | Long text | For SEO |
+| Related Stories | Link to Stories | |
+| Related Media | Link to Media | |
+| Tags | Link to Tags | |
 
-4. **Verify Table Name**
-   - The default is `Stories` but check your Airtable base
-   - Update `VITE_AIRTABLE_TABLE_NAME` if different
+### 3. Storytellers Table
+| Field Name | Field Type | Notes |
+|------------|------------|-------|
+| Name | Single line text | Required, Primary field |
+| Project | Single line text | |
+| Profile Image | Attachment | |
+| Media | Link to Media | Multiple allowed |
+| Themes | Link to Themes | Multiple allowed |
+| Location | Single line text | |
+| Summary | Long text | Bio/description |
+| Quotes | Link to Quotes | |
+| Role | Single select | Options: Friend, Volunteer, Staff, Partner |
+| Featured | Checkbox | |
+| Contact Info | Single line text | Internal use only |
 
-5. **Restart the dev server**
-   ```bash
-   npm run dev
-   ```
+### 4. Media Table
+| Field Name | Field Type | Notes |
+|------------|------------|-------|
+| File Name | Single line text | Required, Primary field |
+| Type | Single select | Options: image, video, audio |
+| File | Attachment | Media file |
+| Description | Long text | |
+| Themes | Link to Themes | Multiple allowed |
+| Tags | Link to Tags | Multiple allowed |
+| Summary | Long text | AI-generated or manual |
+| Transcript | Long text | For video/audio |
+| Storytellers | Link to Storytellers | Multiple allowed |
+| Quotes | Link to Quotes | |
+| Location | Single line text | |
+| Project | Single line text | |
+| Created At | Date | |
+| Featured | Checkbox | |
+| Orange Sky Content | Checkbox | |
+| Thumbnail | Attachment | For videos |
+| Alt Text | Single line text | Accessibility |
 
-## Expected Airtable Structure
+## Airtable MCP Integration
 
-The app expects these fields in your Stories table:
-- `Title` - The story title
-- `Story copy` - The main story content
-- `Storytellers` - Linked to Storytellers table
-- `Themes` - Linked to Themes table
-- `Created` - Date the story was created
-- `Location (from Media)` - Location information
-- `Gender` - Optional demographic field
-- `Age Range` - Optional demographic field
+### 1. Configure MCP
+Add to your Claude Desktop config:
+```json
+{
+  "mcpServers": {
+    "airtable": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-airtable"],
+      "env": {
+        "AIRTABLE_API_KEY": "your-api-key",
+        "AIRTABLE_BASE_ID": "your-base-id"
+      }
+    }
+  }
+}
+```
 
-## Troubleshooting
+### 2. Environment Variables
+Add to your `.env` file:
+```
+VITE_AIRTABLE_API_KEY=your-api-key
+VITE_AIRTABLE_BASE_ID=your-base-id
+VITE_DATA_PROVIDER=airtable
+```
 
-### "Airtable not configured" error
-- Make sure you've copied `.env.example` to `.env`
-- Verify your API key and Base ID are correct
-- Ensure the dev server was restarted after changing `.env`
+## Data Migration Script
 
-### "Failed to load stories" error
-- Check the browser console for specific error messages
-- Verify your table name matches what's in Airtable
-- Ensure your API key has access to the base
+To migrate existing wiki content:
 
-### Stories showing as 0
-- Check that your Stories table has records
-- Verify field names match exactly (case-sensitive)
-- Look for errors in the browser console
+1. Export current wiki data from `/src/data/wikiContent.ts`
+2. Create records in the Wiki Pages table
+3. Update the WikiService to use Airtable instead of local data
+4. Test all wiki page operations (read, edit, save)
+EOF < /dev/null

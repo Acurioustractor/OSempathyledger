@@ -50,10 +50,39 @@ import {
   fetchMedia,
   fetchStories,
   fetchThemes,
-  fetchQuotes,
-  fetchShifts
-} from '../services/dataService';
+} from '../services/airtable';
 import { Story, Storyteller, Theme, Media } from '../types';
+import ImageWithFallback from '../components/ImageWithFallback';
+import { motion } from 'framer-motion';
+
+const StatCard = ({ icon, label, value }: { icon: React.ElementType, label: string, value: number | string }) => {
+  const bgColor = useColorModeValue('white', 'gray.700');
+  const borderColor = useColorModeValue('gray.200', 'gray.600');
+  
+  return (
+    <Stat
+      px={{ base: 4, md: 6 }}
+      py={'5'}
+      shadow={'md'}
+      border={'1px solid'}
+      borderColor={borderColor}
+      rounded={'lg'}
+      bg={bgColor}
+      display="flex"
+      alignItems="center"
+    >
+      <Icon as={icon} boxSize={8} color="orange.400" mr={4} />
+      <Box>
+        <StatLabel fontWeight={'medium'} isTruncated>
+          {label}
+        </StatLabel>
+        <StatNumber fontSize={'2xl'} fontWeight={'medium'}>
+          {value}
+        </StatNumber>
+      </Box>
+    </Stat>
+  );
+};
 
 const HomePage: React.FC = () => {
   const navigate = useNavigate();
@@ -87,12 +116,11 @@ const HomePage: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const [storiesData, storytellersData, themesData, mediaData, shiftsData] = await Promise.all([
+      const [storiesData, storytellersData, themesData, mediaData] = await Promise.all([
         fetchStories(),
         fetchStorytellers(),
         fetchThemes(),
         fetchMedia(),
-        fetchShifts()
       ]);
 
       setStories(storiesData);
@@ -239,150 +267,32 @@ const HomePage: React.FC = () => {
 
       {/* Stats Section */}
       <Container maxWidth="7xl" py={8}>
-        <SimpleGrid columns={{ base: 2, md: 5 }} spacing={4}>
-          <Stat
-            p={4}
-            bg={cardBg}
-            borderRadius="lg"
-            borderWidth="1px"
-            borderColor={borderColor}
-            textAlign="center"
-          >
-            <StatLabel color="gray.500">Stories</StatLabel>
-            <StatNumber fontSize="3xl" color={accentColor}>{stats.stories}</StatNumber>
-          </Stat>
-          <Stat
-            p={4}
-            bg={cardBg}
-            borderRadius="lg"
-            borderWidth="1px"
-            borderColor={borderColor}
-            textAlign="center"
-          >
-            <StatLabel color="gray.500">Storytellers</StatLabel>
-            <StatNumber fontSize="3xl" color={accentColor}>{stats.storytellers}</StatNumber>
-          </Stat>
-          <Stat
-            p={4}
-            bg={cardBg}
-            borderRadius="lg"
-            borderWidth="1px"
-            borderColor={borderColor}
-            textAlign="center"
-          >
-            <StatLabel color="gray.500">Themes</StatLabel>
-            <StatNumber fontSize="3xl" color={accentColor}>{stats.themes}</StatNumber>
-          </Stat>
-          <Stat
-            p={4}
-            bg={cardBg}
-            borderRadius="lg"
-            borderWidth="1px"
-            borderColor={borderColor}
-            textAlign="center"
-          >
-            <StatLabel color="gray.500">Media</StatLabel>
-            <StatNumber fontSize="3xl" color={accentColor}>{stats.media}</StatNumber>
-          </Stat>
-          <Stat
-            p={4}
-            bg={cardBg}
-            borderRadius="lg"
-            borderWidth="1px"
-            borderColor={borderColor}
-            textAlign="center"
-          >
-            <StatLabel color="gray.500">Locations</StatLabel>
-            <StatNumber fontSize="3xl" color={accentColor}>{stats.locations}</StatNumber>
-          </Stat>
+        <SimpleGrid columns={{ base: 1, sm: 2, md: 3, lg: 5 }} spacing={{ base: 5, lg: 8 }}>
+          <StatCard icon={PlayIcon} label="Stories" value={stats.stories} />
+          <StatCard icon={PeopleIcon} label="Storytellers" value={stats.storytellers} />
+          <StatCard icon={TagIcon} label="Themes" value={stats.themes} />
+          <StatCard icon={FileMediaIcon} label="Media Items" value={stats.media} />
+          <StatCard icon={LocationIcon} label="Locations" value={stats.locations} />
         </SimpleGrid>
       </Container>
 
       {/* Featured Stories */}
-      <Container maxWidth="7xl" py={12}>
-        <VStack spacing={8} align="start">
-          <Box>
-            <Heading size="lg" mb={2}>Featured Stories</Heading>
-            <Text color="gray.600">Powerful narratives of connection and community</Text>
-          </Box>
-          
-          <SimpleGrid columns={heroColumns} spacing={6} width="full">
-            {featuredStories.map((story) => {
-              const imageUrl = getStoryImage(story);
-              return (
-                <Box
-                  key={story.id}
-                  bg={cardBg}
-                  borderRadius="lg"
-                  overflow="hidden"
-                  borderWidth="1px"
-                  borderColor={borderColor}
-                  transition="all 0.3s"
-                  _hover={{ 
-                    transform: 'translateY(-4px)', 
-                    shadow: 'lg',
-                    borderColor: accentColor 
-                  }}
-                  cursor="pointer"
-                  onClick={() => navigate(`/story/${story.id}`)}
-                >
-                  {imageUrl && (
-                    <AspectRatio ratio={16/9}>
-                      <Image 
-                        src={imageUrl} 
-                        alt={story.Title}
-                        objectFit="cover"
-                      />
-                    </AspectRatio>
-                  )}
-                  
-                  <Box p={6}>
-                    <VStack align="start" spacing={3}>
-                      {story.Themes?.length > 0 && (
-                        <Wrap spacing={2}>
-                          {story.Themes.slice(0, 2).map(themeId => {
-                            const themeName = getThemeName(themeId);
-                            if (!themeName) return null;
-                            return (
-                              <WrapItem key={themeId}>
-                                <Tag size="sm" colorScheme="orange" variant="subtle">
-                                  {themeName}
-                                </Tag>
-                              </WrapItem>
-                            );
-                          })}
-                        </Wrap>
-                      )}
-                      
-                      <Heading size="md" noOfLines={2}>
-                        {story.Title}
-                      </Heading>
-                      
-                      <Text color="gray.600" noOfLines={3}>
-                        {getStorySummary(story)}
-                      </Text>
-                      
-                      <HStack spacing={4} fontSize="sm" color="gray.500" pt={2}>
-                        {story.Storytellers?.length > 0 && (
-                          <HStack spacing={1}>
-                            <Icon as={PeopleIcon} />
-                            <Text>{getStorytellerName(story.Storytellers[0])}</Text>
-                          </HStack>
-                        )}
-                        {story['Location (from Media)']?.[0] && (
-                          <HStack spacing={1}>
-                            <Icon as={LocationIcon} />
-                            <Text>{story['Location (from Media)'][0]}</Text>
-                          </HStack>
-                        )}
-                      </HStack>
-                    </VStack>
-                  </Box>
+      <Container maxWidth="7xl" py={8}>
+        <Heading size="lg" mb={6}>Featured Stories</Heading>
+        <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+          {featuredStories.map(story => (
+            <RouterLink to={`/story/${story.id}`} key={story.id} _hover={{ textDecoration: 'none' }}>
+              <Box bg={cardBg} shadow="md" borderRadius="lg" overflow="hidden" h="100%" transition="all 0.2s ease-in-out" _hover={{ transform: 'translateY(-5px)', shadow: 'lg' }}>
+                <ImageWithFallback src={getStoryImage(story)} alt={story.Title} h="200px" w="full" objectFit="cover" />
+                <Box p={5}>
+                  <Heading size="md" mb={2} noOfLines={2}>{story.Title}</Heading>
+                  <Text fontSize="sm" color="gray.500" mb={3}>By {getStorytellerName(story.Storytellers?.[0])}</Text>
+                  <Text noOfLines={3} color={useColorModeValue('gray.600', 'gray.400')}>{getStorySummary(story)}</Text>
                 </Box>
-              );
-            })}
-          </SimpleGrid>
-        </VStack>
+              </Box>
+            </RouterLink>
+          ))}
+        </SimpleGrid>
       </Container>
 
       {/* Recent Stories Section */}
@@ -470,6 +380,7 @@ const HomePage: React.FC = () => {
                   color="orange.500"
                   _hover={{ bg: 'gray.100' }}
                   onClick={() => navigate('/capture')}
+                  rightIcon={<ChevronRightIcon />}
                 >
                   Share Your Story
                 </Button>
@@ -480,6 +391,7 @@ const HomePage: React.FC = () => {
                   borderColor="white"
                   _hover={{ bg: 'whiteAlpha.200' }}
                   onClick={() => navigate('/storytellers')}
+                  rightIcon={<ChevronRightIcon />}
                 >
                   Meet Our Storytellers
                 </Button>

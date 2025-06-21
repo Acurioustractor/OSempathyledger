@@ -117,7 +117,7 @@ const TeamExperienceHub = () => {
     .slice(0, 5)
     .map(([id, count]) => {
       const teller = storytellers.find(st => st.id === id)
-      return { id, name: teller?.fields?.Name || 'Unknown', count }
+      return { id, name: teller?.Name || teller?.fields?.Name || 'Unknown', count }
     })
 
   const isLoading = storiesLoading || isLoadingStorytellers || isLoadingThemes || isLoadingShifts
@@ -336,8 +336,8 @@ const TeamExperienceHub = () => {
                       <Divider />
                       <AvatarGroup size="sm" max={5}>
                         {storytellers.slice(0, 8).map(st => (
-                          <Tooltip key={st.id} label={st.fields.Name}>
-                            <Avatar name={st.fields.Name} />
+                          <Tooltip key={st.id} label={st.Name || st.fields?.Name || 'Unknown'}>
+                            <Avatar name={st.Name || st.fields?.Name || 'Unknown'} />
                           </Tooltip>
                         ))}
                       </AvatarGroup>

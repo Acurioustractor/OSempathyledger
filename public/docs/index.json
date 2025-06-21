@@ -1,0 +1,22 @@
+[
+  {
+    "slug": "01-project-overview",
+    "title": "Project Overview",
+    "tags": ["history", "overview"]
+  },
+  {
+    "slug": "02-descript-guide",
+    "title": "Descript Guide",
+    "tags": ["tools", "guide", "descript"]
+  },
+  {
+    "slug": "03-airtable-guide",
+    "title": "Airtable Guide",
+    "tags": ["tools", "guide", "airtable"]
+  },
+  {
+    "slug": "04-airtable-schema",
+    "title": "Airtable Schema Overview",
+    "tags": ["airtable", "schema", "data"]
+  }
+] 

@@ -1,5 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { Container, Typography, Paper, Box, CircularProgress, Alert } from '@mui/material';
+import { 
+  Container, 
+  Heading, 
+  Text, 
+  Box, 
+  VStack, 
+  HStack,
+  Spinner, 
+  Alert,
+  AlertIcon,
+  Code,
+  Card,
+  CardBody,
+  Stat,
+  StatLabel,
+  StatNumber,
+  SimpleGrid,
+  useColorModeValue
+} from '@chakra-ui/react';
 import { fetchStories, fetchStorytellers, fetchThemes, fetchMedia } from '../services/dataService';
 
 const DataDebugPage: React.FC = () => {
@@ -11,6 +29,9 @@ const DataDebugPage: React.FC = () => {
     themes: [],
     media: []
   });
+
+  const bgColor = useColorModeValue('gray.50', 'gray.900');
+  const cardBg = useColorModeValue('white', 'gray.800');
 
   useEffect(() => {
     const loadData = async () => {
@@ -57,54 +78,91 @@ const DataDebugPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-          <CircularProgress />
-        </Box>
+      <Container maxWidth="7xl" py={8}>
+        <VStack spacing={8} align="center" minH="400px" justify="center">
+          <Spinner size="xl" color="orange.500" />
+          <Text>Loading data...</Text>
+        </VStack>
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Typography variant="h4" gutterBottom>Data Debug Page</Typography>
-      
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Environment Configuration</Typography>
-        <Box component="pre" sx={{ backgroundColor: '#f5f5f5', p: 2, borderRadius: 1, overflow: 'auto' }}>
-          {JSON.stringify({
-            DATA_PROVIDER: import.meta.env.VITE_DATA_PROVIDER,
-            DATA_SOURCE: import.meta.env.VITE_DATA_SOURCE,
-            ENABLE_FALLBACK: import.meta.env.VITE_ENABLE_DATA_FALLBACK,
-          }, null, 2)}
-        </Box>
-      </Paper>
+    <Box minH="100vh" bg={bgColor}>
+      <Container maxWidth="7xl" py={8}>
+        <VStack spacing={8} align="stretch">
+          <Heading size="xl">Data Debug Page</Heading>
+          
+          <Card bg={cardBg}>
+            <CardBody>
+              <Heading size="md" mb={4}>Environment Configuration</Heading>
+              <Box
+                as="pre"
+                p={4}
+                bg={useColorModeValue('gray.100', 'gray.900')}
+                borderRadius="md"
+                overflow="auto"
+              >
+                <Code>{JSON.stringify({
+                  DATA_PROVIDER: import.meta.env.VITE_DATA_PROVIDER,
+                  DATA_SOURCE: import.meta.env.VITE_DATA_SOURCE,
+                  ENABLE_FALLBACK: import.meta.env.VITE_ENABLE_DATA_FALLBACK,
+                }, null, 2)}</Code>
+              </Box>
+            </CardBody>
+          </Card>
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
+          {error && (
+            <Alert status="error">
+              <AlertIcon />
+              {error}
+            </Alert>
+          )}
 
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Data Summary</Typography>
-        <Box>
-          <Typography>Stories: {data.stories.length}</Typography>
-          <Typography>Storytellers: {data.storytellers.length}</Typography>
-          <Typography>Themes: {data.themes.length}</Typography>
-          <Typography>Media: {data.media.length}</Typography>
-        </Box>
-      </Paper>
+          <Card bg={cardBg}>
+            <CardBody>
+              <Heading size="md" mb={4}>Data Summary</Heading>
+              <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
+                <Stat>
+                  <StatLabel>Stories</StatLabel>
+                  <StatNumber color="orange.500">{data.stories.length}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel>Storytellers</StatLabel>
+                  <StatNumber color="orange.500">{data.storytellers.length}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel>Themes</StatLabel>
+                  <StatNumber color="orange.500">{data.themes.length}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel>Media</StatLabel>
+                  <StatNumber color="orange.500">{data.media.length}</StatNumber>
+                </Stat>
+              </SimpleGrid>
+            </CardBody>
+          </Card>
 
-      {data.stories.length > 0 && (
-        <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>Sample Stories (First 2)</Typography>
-          <Box component="pre" sx={{ backgroundColor: '#f5f5f5', p: 2, borderRadius: 1, overflow: 'auto' }}>
-            {JSON.stringify(data.stories.slice(0, 2), null, 2)}
-          </Box>
-        </Paper>
-      )}
-    </Container>
+          {data.stories.length > 0 && (
+            <Card bg={cardBg}>
+              <CardBody>
+                <Heading size="md" mb={4}>Sample Stories (First 2)</Heading>
+                <Box
+                  as="pre"
+                  p={4}
+                  bg={useColorModeValue('gray.100', 'gray.900')}
+                  borderRadius="md"
+                  overflow="auto"
+                  maxH="500px"
+                >
+                  <Code>{JSON.stringify(data.stories.slice(0, 2), null, 2)}</Code>
+                </Box>
+              </CardBody>
+            </Card>
+          )}
+        </VStack>
+      </Container>
+    </Box>
   );
 };
 

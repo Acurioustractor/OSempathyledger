@@ -1,163 +1,170 @@
-import {
-  Box,
-  VStack,
-  Text,
-  Collapse,
-  Button,
-  Icon,
-  useColorModeValue,
-  Divider,
-} from '@chakra-ui/react'
-import { useState } from 'react'
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  FiChevronDown, 
-  FiChevronRight,
-  FiBookOpen,
-  FiMap,
-  FiUsers,
-  FiTrendingUp,
-  FiSettings,
-  FiAward,
-  FiTarget,
-  FiPackage,
-  FiGlobe,
-  FiCompass
-} from 'react-icons/fi'
-import { wikiContent, WikiSection } from '../../data/wikiContent'
+  Box, 
+  Heading, 
+  VStack, 
+  Spinner, 
+  Alert, 
+  AlertIcon, 
+  Link as ChakraLink,
+  InputGroup,
+  InputLeftElement,
+  Input,
+  Tag,
+  Wrap,
+  WrapItem
+} from '@chakra-ui/react';
+import { NavLink as RouterLink, useParams } from 'react-router-dom';
+import { SearchIcon } from '@chakra-ui/icons';
 
-interface WikiSidebarProps {
-  currentSection: string
-  onSectionChange: (sectionId: string) => void
-  searchQuery?: string
+interface Article {
+  slug: string;
+  title: string;
+  tags: string[];
 }
 
-const iconMap: { [key: string]: any } = {
-  overview: FiBookOpen,
-  journey: FiMap,
-  implementation: FiSettings,
-  collection: FiUsers,
-  platform: FiPackage,
-  impact: FiTrendingUp,
-  recommendations: FiTarget,
-  'project-overview': FiCompass,
-  'canberra-reflection': FiGlobe,
-  'impact-metrics': FiAward,
-}
+const WikiSidebar: React.FC = () => {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const { slug } = useParams<{ slug: string }>();
 
-const WikiSidebar = ({ currentSection, onSectionChange, searchQuery = '' }: WikiSidebarProps) => {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(['overview', 'journey', 'implementation'])
-  )
-  
-  const hoverBg = useColorModeValue('gray.50', 'gray.700')
-  const activeBg = useColorModeValue('orange.50', 'rgba(255, 107, 10, 0.1)')
-  const activeColor = useColorModeValue('orangeSky.primary', 'orange.300')
-  const textColor = useColorModeValue('gray.700', 'gray.200')
-  const mutedColor = useColorModeValue('gray.500', 'gray.400')
-
-  const toggleSection = (sectionId: string) => {
-    const newExpanded = new Set(expandedSections)
-    if (newExpanded.has(sectionId)) {
-      newExpanded.delete(sectionId)
-    } else {
-      newExpanded.add(sectionId)
-    }
-    setExpandedSections(newExpanded)
-  }
-
-  const filterSections = (sections: WikiSection[]): WikiSection[] => {
-    if (!searchQuery) return sections
-    
-    return sections.filter(section => {
-      const matchesSearch = section.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        section.description?.toLowerCase().includes(searchQuery.toLowerCase())
-      
-      if (section.children) {
-        const filteredChildren = filterSections(section.children)
-        return matchesSearch || filteredChildren.length > 0
+  useEffect(() => {
+    const fetchArticles = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch('/docs/index.json');
+        if (!response.ok) {
+          throw new Error('Could not fetch article list.');
+        }
+        const data = await response.json();
+        setArticles(data);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
       }
-      
-      return matchesSearch
-    })
+    };
+
+    fetchArticles();
+  }, []);
+
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    articles.forEach(article => {
+      if (article.tags) {
+        article.tags.forEach(tag => tags.add(tag));
+      }
+    });
+    return Array.from(tags).sort();
+  }, [articles]);
+
+  const filteredArticles = useMemo(() => {
+    return articles.filter(article => {
+      const matchesSearch = searchTerm
+        ? article.title.toLowerCase().includes(searchTerm.toLowerCase())
+        : true;
+      const matchesTag = selectedTag
+        ? article.tags?.includes(selectedTag)
+        : true;
+      return matchesSearch && matchesTag;
+    });
+  }, [articles, searchTerm, selectedTag]);
+
+  if (loading) {
+    return <Spinner />;
   }
 
-  const renderSection = (section: WikiSection, level: number = 0) => {
-    const isActive = currentSection === section.id
-    const hasChildren = section.children && section.children.length > 0
-    const isExpanded = expandedSections.has(section.id)
-    const Icon = iconMap[section.id] || FiBookOpen
-    
+  if (error) {
     return (
-      <Box key={section.id}>
-        <Button
-          variant="ghost"
-          justifyContent="flex-start"
-          w="full"
-          pl={level * 4 + 4}
-          pr={2}
-          py={2}
-          h="auto"
-          minH="40px"
-          bg={isActive ? activeBg : 'transparent'}
-          color={isActive ? activeColor : textColor}
-          _hover={{ bg: hoverBg }}
-          onClick={() => {
-            if (hasChildren) {
-              toggleSection(section.id)
-            }
-            onSectionChange(section.id)
-          }}
-        >
-          <Icon as={hasChildren ? (isExpanded ? FiChevronDown : FiChevronRight) : Icon} mr={2} />
-          <Text fontSize="sm" fontWeight={isActive ? 'medium' : 'normal'} flex="1" textAlign="left">
-            {section.title}
-          </Text>
-        </Button>
-        
-        {hasChildren && (
-          <Collapse in={isExpanded}>
-            <VStack spacing={0} align="stretch">
-              {filterSections(section.children!).map(child => renderSection(child, level + 1))}
-            </VStack>
-          </Collapse>
-        )}
-      </Box>
-    )
+      <Alert status="error" variant="subtle">
+        <AlertIcon />
+        {error}
+      </Alert>
+    );
   }
-
-  const filteredContent = filterSections(wikiContent)
 
   return (
-    <VStack spacing={4} align="stretch" p={4}>
-      {/* Header */}
-      <Box>
-        <Text fontSize="xs" fontWeight="bold" color={mutedColor} textTransform="uppercase" mb={2}>
-          Documentation
-        </Text>
-        <Divider />
-      </Box>
-
-      {/* Navigation */}
-      <VStack spacing={0} align="stretch">
-        {filteredContent.map(section => renderSection(section))}
+    <Box>
+      <Heading size="md" mb={4}>
+        Documentation
+      </Heading>
+      <InputGroup mb={4}>
+        <InputLeftElement pointerEvents="none">
+          <SearchIcon color="gray.300" />
+        </InputLeftElement>
+        <Input 
+          placeholder="Search articles..." 
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </InputGroup>
+      
+      <Heading size="sm" mb={3}>Tags</Heading>
+      <Wrap mb={6}>
+        <WrapItem>
+            <Tag
+              as="button"
+              size="md"
+              variant={!selectedTag ? 'solid' : 'outline'}
+              colorScheme="orange"
+              onClick={() => setSelectedTag(null)}
+              _focus={{ boxShadow: 'outline' }}
+            >
+              All
+            </Tag>
+        </WrapItem>
+        {allTags.map(tag => (
+          <WrapItem key={tag}>
+            <Tag
+              as="button"
+              size="md"
+              variant={selectedTag === tag ? 'solid' : 'outline'}
+              colorScheme="teal"
+              onClick={() => setSelectedTag(tag)}
+              _focus={{ boxShadow: 'outline' }}
+            >
+              {tag}
+            </Tag>
+          </WrapItem>
+        ))}
+      </Wrap>
+      
+      <Heading size="sm" mb={3}>Articles</Heading>
+      <VStack align="stretch" spacing={1}>
+        {filteredArticles.length > 0 ? (
+          filteredArticles.map(article => (
+            <ChakraLink
+              key={article.slug}
+              as={RouterLink}
+              to={`/wiki/${article.slug}`}
+              display="block"
+              p={2}
+              borderRadius="md"
+              bg={slug === article.slug ? 'orange.100' : 'transparent'}
+              fontWeight={slug === article.slug ? 'bold' : 'normal'}
+              color={slug === article.slug ? 'orange.800' : 'inherit'}
+              _hover={{
+                bg: 'gray.100',
+                textDecoration: 'none',
+              }}
+              _activeLink={{
+                bg: 'orange.200',
+                fontWeight: 'bold',
+              }}
+            >
+              {article.title}
+            </ChakraLink>
+          ))
+        ) : (
+          <Box p={2} color="gray.500">No articles found.</Box>
+        )}
       </VStack>
+    </Box>
+  );
+};
 
-      {/* Footer Info */}
-      <Box pt={4} borderTop="1px" borderColor="gray.200">
-        <VStack spacing={2} align="start">
-          <Text fontSize="xs" color={mutedColor}>
-            Orange Sky × Empathy Ledger
-          </Text>
-          <Text fontSize="xs" color={mutedColor}>
-            6-Month Project Report
-          </Text>
-          <Text fontSize="xs" color={mutedColor}>
-            April - June 2024
-          </Text>
-        </VStack>
-      </Box>
-    </VStack>
-  )
-}
-
-export default WikiSidebar
+export default WikiSidebar;

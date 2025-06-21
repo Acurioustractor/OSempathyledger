@@ -1,0 +1,29 @@
+{
+	"meta": {
+		"generatedAt": "2025-06-21T06:03:16.588Z",
+		"tasksAnalyzed": 2,
+		"totalTasks": 2,
+		"analysisCount": 2,
+		"thresholdScore": 5,
+		"projectName": "Taskmaster",
+		"usedResearch": true
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 1,
+			"taskTitle": "Setup Project Repository",
+			"complexityScore": 2,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Break down the repository setup into discrete steps such as initializing the repository, creating and populating the README.md, and configuring the .gitignore file.",
+			"reasoning": "This task is straightforward, involving standard steps with minimal decision points and low cyclomatic complexity. It is mostly procedural and does not require complex logic or integration, but can be split into a few clear subtasks for clarity and tracking."
+		},
+		{
+			"taskId": 2,
+			"taskTitle": "Implement User Login",
+			"complexityScore": 6,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Decompose the user login implementation into subtasks such as designing the login form UI, implementing form validation, integrating with the authentication API, handling authentication responses (success and error), and writing tests for all login scenarios.",
+			"reasoning": "This task involves UI development, API integration, error handling, and testing, each with multiple decision points and potential edge cases. The cyclomatic and cognitive complexity are moderate, and breaking it into more granular subtasks will help manage dependencies and ensure thorough coverage."
+		}
+	]
+}

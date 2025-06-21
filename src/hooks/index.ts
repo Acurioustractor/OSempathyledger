@@ -22,6 +22,7 @@ export { default as useStorytellersData } from './useStorytellersData';
 export { default as useTagsData } from './useTagsData';
 export { default as useQuotesData } from './useQuotesData';
 export { default as useVisualisationData } from './useVisualisationData';
+export { useOrangeSkyData, useIsOrangeSkyStory } from './useOrangeSkyData';
 
 // This index file makes it easy to import hooks like:
 // import { useStoriesData, useMediaData } from '../hooks';

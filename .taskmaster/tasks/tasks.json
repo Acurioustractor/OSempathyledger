@@ -1,0 +1,159 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 3,
+        "title": "Codebase Audit & Cleanup",
+        "description": "Identify and remove unused or misaligned components, pages, and services; delete redundant layouts, navigation, and data hooks; ensure remaining components are functional and error-free.",
+        "details": "Review the entire codebase for unused or 'cooked' components, pages, and services. Remove all that do not align with core user stories. Delete redundant layouts and navigation elements. Clean up data hooks and ensure all remaining components are functional and error-free. Use static analysis tools and manual review for thoroughness.",
+        "testStrategy": "Manual review and static analysis to confirm removal of unused code. Run existing test suites to ensure no regressions in core functionality.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Refactor Data Services to Airtable",
+        "description": "Consolidate all Airtable API calls into a central service; ensure all data flows through airtable.ts; remove direct API calls from components and other services; remove dev-server.js proxy.",
+        "details": "Move all Airtable API calls to src/services/airtable.ts. Expose necessary functions (fetchStories, fetchStorytellers, fetchMedia, fetchThemes, fetchQuotes). Remove direct API calls from components and other services. Remove dev-server.js proxy and related logic. Frontend should call Airtable directly.",
+        "testStrategy": "Unit tests for each exposed function. Integration tests to verify data flow from frontend to Airtable. Manual testing to confirm removal of proxy and direct API calls.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Standardize Page Layouts",
+        "description": "Create a single, reusable Layout.tsx component for consistent navigation and structure; remove all other layout components.",
+        "details": "Design and implement a reusable Layout.tsx component that provides consistent navigation and structure for all pages. Remove all other layout components (e.g., EnhancedLayout). Ensure all pages use the new layout.",
+        "testStrategy": "Manual testing to confirm consistent layout across all pages. Unit tests for Layout.tsx. Regression testing to ensure no layout-related bugs.",
+        "priority": "medium",
+        "dependencies": [
+          3
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Build Homepage",
+        "description": "Implement a simple, elegant homepage providing a high-level overview and clear navigation to core content.",
+        "details": "Develop a homepage that displays a high-level overview of the project's impact and offers clear navigation to core content. Use the standardized Layout.tsx. Ensure the design is simple and elegant.",
+        "testStrategy": "Manual testing for layout, navigation, and content display. Unit tests for homepage components.",
+        "priority": "medium",
+        "dependencies": [
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 7,
+        "title": "Build Stories Page",
+        "description": "Implement a gallery or list view of all stories, with search and filter capabilities.",
+        "details": "Create a page that displays all stories in a gallery or list view. Implement search and filter functionality (simple text search initially). Use data from airtable.ts.",
+        "testStrategy": "Manual testing for search, filter, and display. Unit tests for data fetching and rendering. Integration tests for search/filter logic.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Build Story Detail Page",
+        "description": "Implement a page to display a single story, including narrative, associated media, and storyteller.",
+        "details": "Develop a page that shows a single story's narrative, associated media, and the storyteller behind it. Use data from airtable.ts. Ensure media and storyteller links are functional.",
+        "testStrategy": "Manual testing for content display and navigation. Unit tests for data fetching and rendering.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Build Storytellers Page",
+        "description": "Implement a gallery or list view of all storytellers, with links to their stories.",
+        "details": "Create a page that displays all storytellers in a gallery or list view. Each storyteller should link to their stories. Use data from airtable.ts.",
+        "testStrategy": "Manual testing for display and navigation. Unit tests for data fetching and rendering.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "Build Media Page",
+        "description": "Implement a masonry gallery of all media, with filter and detail view capabilities.",
+        "details": "Develop a page that displays all media (images and videos) in a masonry gallery. Implement filter and detail view functionality. Use data from airtable.ts.",
+        "testStrategy": "Manual testing for gallery display, filtering, and detail views. Unit tests for data fetching and rendering.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "Build Themes Page",
+        "description": "Implement a list or cloud of all themes, with links to related stories.",
+        "details": "Create a page that displays all themes in a list or cloud view. Each theme should link to related stories. Use data from airtable.ts.",
+        "testStrategy": "Manual testing for display and navigation. Unit tests for data fetching and rendering.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 12,
+        "title": "Build Quotes Page",
+        "description": "Implement a simple page to display quotes extracted from stories.",
+        "details": "Develop a page that displays quotes extracted from stories. Use data from airtable.ts. Ensure the design is simple and readable.",
+        "testStrategy": "Manual testing for content display. Unit tests for data fetching and rendering.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 13,
+        "title": "Build GitBook-Style Documentation Hub (Wiki)",
+        "description": "Implement a comprehensive documentation hub with a dynamic sidebar, markdown rendering, and search/filter functionality, accessible under the /wiki route.",
+        "details": "Develop a documentation hub inspired by GitBook, featuring a dynamic sidebar for hierarchical navigation, markdown rendering for content pages, and robust search/filter capabilities by title and tags. Use a modular architecture to allow easy addition and editing of documentation pages. Sidebar navigation should reflect the structure of the documentation, updating dynamically as content changes. Integrate a markdown parser to render content, supporting code blocks, images, and tables. Implement a search bar that filters pages by title and tags in real time. Ensure the hub is fully responsive and accessible. Integrate the documentation hub into the main application under the /wiki route, ensuring seamless navigation with the rest of the app. Consider future extensibility for features like versioning or collaborative editing.",
+        "testStrategy": "Perform end-to-end testing to verify navigation, markdown rendering, and search/filter functionality. Write unit tests for sidebar generation, markdown parsing, and search logic. Conduct manual accessibility and responsiveness checks. Validate integration under the /wiki route and ensure no regressions in existing navigation.",
+        "status": "done",
+        "dependencies": [
+          4,
+          5
+        ],
+        "priority": "medium",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-06-21T06:03:08.434Z",
+      "updated": "2025-06-21T07:36:13.915Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

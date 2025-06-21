@@ -1,41 +1,22 @@
 import axios from 'axios';
 import { Story, Storyteller, Theme, Media, Shift, Gallery, Quote, Tag } from './airtable';
 
-// GitHub repository configuration
-const GITHUB_OWNER = 'Acurioustractor';
-const GITHUB_REPO = 'empathy-ledger-public-data';
-const GITHUB_BRANCH = 'main';
-const GITHUB_BASE_URL = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}`;
+const GITHUB_API_BASE_URL =
+  'https://raw.githubusercontent.com/Acurioustractor/empathy-ledger-public-data/main';
 
-// Cache for fetched data
-const dataCache: Record<string, { data: any; timestamp: number }> = {};
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-
-// Helper to fetch JSON data from GitHub
-async function fetchFromGitHub<T>(path: string): Promise<T> {
-  const cacheKey = path;
-  const cached = dataCache[cacheKey];
-  
-  // Return cached data if still valid
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    console.log(`[GitHub] Returning cached data for ${path}`);
-    return cached.data as T;
-  }
-  
+/**
+ * Fetches a JSON file from the GitHub repository.
+ * @param filePath The path to the file in the repo (e.g., 'Stories.json')
+ * @returns The parsed JSON data.
+ */
+async function fetchFromGitHub<T>(filePath: string): Promise<T> {
+  const url = `${GITHUB_API_BASE_URL}/${filePath}`;
+  console.log(`[GitHub] Fetching ${filePath}`);
   try {
-    console.log(`[GitHub] Fetching ${path}`);
-    const url = `${GITHUB_BASE_URL}/${path}`;
-    const response = await axios.get(url);
-    
-    // Cache the response
-    dataCache[cacheKey] = {
-      data: response.data,
-      timestamp: Date.now()
-    };
-    
+    const response = await axios.get<T>(url);
     return response.data;
-  } catch (error) {
-    console.error(`[GitHub] Error fetching ${path}:`, error);
+  } catch (error: any) {
+    console.error(`[GitHub] Error fetching ${filePath}:`, error);
     throw new Error(`Failed to fetch data from GitHub: ${error.message}`);
   }
 }
@@ -159,7 +140,7 @@ export async function fetchMediaFromGitHub(): Promise<Media[]> {
 // Fetch shifts from GitHub
 export async function fetchShiftsFromGitHub(): Promise<Shift[]> {
   try {
-    const data = await fetchFromGitHub<any[]>('Shifts.json');
+    const data = await fetchFromGitHub<any[]>('shifts.json');
     
     return data.map(item => ({
       id: item.id || item.ID || `shift-${item.Name}`,
@@ -265,6 +246,5 @@ export async function fetchTagsFromGitHub(): Promise<Tag[]> {
 
 // Clear the cache
 export function clearGitHubCache() {
-  Object.keys(dataCache).forEach(key => delete dataCache[key]);
   console.log('[GitHub] Cache cleared');
 }

@@ -1,81 +1,63 @@
-import { Box, Flex, Link, Button, HStack, useColorModeValue, useColorMode, Menu, MenuButton, MenuList, MenuItem } from '@chakra-ui/react'
+import { Box, Flex, HStack, Link, useColorModeValue } from '@chakra-ui/react'
+import React from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { MoonIcon, SunIcon, ChevronDownIcon } from '@chakra-ui/icons'
 
 interface LayoutProps {
   children: React.ReactNode
 }
 
-const Layout = ({ children }: LayoutProps) => {
-  const { colorMode, toggleColorMode } = useColorMode()
+const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) => (
+  <Link
+    as={RouterLink}
+    to={to}
+    px={2}
+    py={1}
+    rounded={'md'}
+    _hover={{
+      textDecoration: 'none',
+      bg: useColorModeValue('gray.200', 'gray.700'),
+    }}
+  >
+    {children}
+  </Link>
+)
+
+const Layout: React.FC<LayoutProps> = ({ children }) => {
   const bgColor = useColorModeValue('gray.100', 'gray.900')
-  const borderColor = useColorModeValue('gray.200', 'gray.700')
+  const headerBgColor = useColorModeValue('white', 'gray.800')
 
   return (
-    <Box minH="100vh">
-      <Box bg={bgColor} px={4} shadow="sm" borderBottom="1px" borderColor={borderColor}>
+    <Box minH="100vh" bg={bgColor}>
+      <Box bg={headerBgColor} px={4} shadow="md">
         <Flex h={16} alignItems={'center'} justifyContent={'space-between'}>
           <HStack spacing={8} alignItems={'center'}>
-            <Box fontWeight="bold" color="orangeSky.primary">Orange Sky Empathy Ledger</Box>
+            <Box fontWeight="bold">Empathy Ledger</Box>
             <HStack as={'nav'} spacing={4} display={{ base: 'none', md: 'flex' }}>
-              <Link as={RouterLink} to="/">Home</Link>
-              <Link as={RouterLink} to="/team-experience" color="orangeSky.primary" fontWeight="medium">
-                Team Experience
-              </Link>
-              <Link as={RouterLink} to="/wiki" color="orangeSky.primary" fontWeight="medium">
-                Project Wiki
-              </Link>
-              <Link as={RouterLink} to="/stories">Stories</Link>
-              <Link as={RouterLink} to="/storytellers">Storytellers</Link>
-              <Link as={RouterLink} to="/analysis">Analysis</Link>
-              
-              <Menu>
-                <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDownIcon />}>
-                  Vision
-                </MenuButton>
-                <MenuList>
-                  <MenuItem as={RouterLink} to="/vision">
-                    Future Vision
-                  </MenuItem>
-                  <MenuItem as={RouterLink} to="/visualization">
-                    Visualization Hub
-                  </MenuItem>
-                  <MenuItem as={RouterLink} to="/impact">
-                    Impact Analytics
-                  </MenuItem>
-                </MenuList>
-              </Menu>
-              
-              <Menu>
-                <MenuButton as={Button} variant="ghost" size="sm" rightIcon={<ChevronDownIcon />}>
-                  More
-                </MenuButton>
-                <MenuList>
-                  <MenuItem as={RouterLink} to="/media">
-                    Media
-                  </MenuItem>
-                  <MenuItem as={RouterLink} to="/themes">
-                    Themes
-                  </MenuItem>
-                  <MenuItem as={RouterLink} to="/quotes">
-                    Quotes
-                  </MenuItem>
-                  <MenuItem as={RouterLink} to="/visualisations">
-                    Visualisations
-                  </MenuItem>
-                </MenuList>
-              </Menu>
+              <NavLink to="/">Home</NavLink>
+              <NavLink to="/stories">Stories</NavLink>
+              <NavLink to="/media">Media</NavLink>
+              <NavLink to="/themes">Themes</NavLink>
+              <NavLink to="/quotes">Quotes</NavLink>
+              <NavLink to="/wiki">Wiki</NavLink>
             </HStack>
           </HStack>
-          <Flex alignItems={'center'}>
-            <Button onClick={toggleColorMode} size="sm" mr={4}>
-              {colorMode === 'light' ? <MoonIcon /> : <SunIcon />}
-            </Button>
-          </Flex>
         </Flex>
       </Box>
-      <Box as="main" maxW="container.xl" mx="auto" px={4} py={8}>
+
+      <Box as="main" p={8}>
         {children}
+      </Box>
+
+      <Box
+        as="footer"
+        py={4}
+        px={8}
+        mt={8}
+        textAlign="center"
+        borderTop="1px"
+        borderColor={useColorModeValue('gray.200', 'gray.700')}
+      >
+        <p>© {new Date().getFullYear()} Orange Sky. All rights reserved.</p>
       </Box>
     </Box>
   )

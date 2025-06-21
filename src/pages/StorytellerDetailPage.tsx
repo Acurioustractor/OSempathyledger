@@ -38,11 +38,13 @@ import {
   Avatar,
   Flex,
   CardFooter,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogContent,
+  AlertDialogFooter,
 } from '@chakra-ui/react';
 import { 
   ChevronLeftIcon, 
-  EditIcon, 
-  DeleteIcon, 
   ExternalLinkIcon, 
   ChatIcon
 } from '@chakra-ui/icons';
@@ -56,10 +58,8 @@ import {
   Theme, 
   fetchThemes,
   Tag, 
-  fetchTags,
-  deleteStoryteller
+  fetchTags
 } from '../services/airtable';
-import StorytellersForm from '../components/StorytellersForm';
 import { FaImage, FaVideo, FaCube } from 'react-icons/fa';
 import { getProfileImageOrFallback } from '../services/imageUtils';
 import MediaDetailModal from "../components/MediaDetailModal";
@@ -75,15 +75,8 @@ const StorytellerDetailPage = () => {
   const [allStorytellers, setAllStorytellers] = useState<Storyteller[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deleteInProgress, setDeleteInProgress] = useState(false);
   const [allQuotes, setAllQuotes] = useState<Quote[]>([]);
   const [selectedMediaForModal, setSelectedMediaForModal] = useState<Media | null>(null);
-  
-  // For edit modal
-  const { isOpen: isEditOpen, onOpen: onEditOpen, onClose: onEditClose } = useDisclosure();
-  
-  // For delete confirmation modal
-  const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
   
   // For media detail modal
   const { 
@@ -236,31 +229,6 @@ const StorytellerDetailPage = () => {
     onMediaModalOpen(); // Open the modal defined in this component
   }, [onMediaModalOpen]);
   
-  // Handle form submission for editing
-  const handleEditSubmit = (updatedStoryteller: Storyteller) => {
-    setStoryteller(updatedStoryteller);
-    onEditClose();
-  };
-  
-  // Handle delete storyteller
-  const handleDelete = async () => {
-    if (!storyteller?.id) return;
-    
-    setDeleteInProgress(true);
-    
-    try {
-      await deleteStoryteller(storyteller.id);
-      navigate('/storytellers', { replace: true });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to delete storyteller';
-      setError(errorMessage);
-      console.error('Error deleting storyteller:', err);
-      onDeleteClose();
-    } finally {
-      setDeleteInProgress(false);
-    }
-  };
-  
   if (loading) {
     return (
       <Container maxW="container.lg" py={10} centerContent>
@@ -313,24 +281,19 @@ const StorytellerDetailPage = () => {
   
   return (
     <Container maxW="container.lg" py={8}>
-      <Button 
-        mb={6} 
-        leftIcon={<ChevronLeftIcon />} 
-        onClick={() => navigate('/storytellers')}
-        size="sm"
-        variant="outline"
-      >
-        Back to Storytellers
-      </Button>
+      <Flex direction={{ base: 'column', md: 'row' }}>
+        <HStack spacing={4}>
+          <Button
+            leftIcon={<ChevronLeftIcon />}
+            onClick={() => navigate('/storytellers')}
+            variant="outline"
+          >
+            Back to Storytellers
+          </Button>
+        </HStack>
+      </Flex>
       
-      <Box
-        bg={bgColor}
-        borderRadius="lg"
-        boxShadow="md"
-        overflow="hidden"
-        borderWidth="1px"
-        borderColor={borderColor}
-      >
+      <Box p={6} bg={bgColor} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
         <Flex direction={{ base: 'column', md: 'row' }}>
           {/* Image Column */}
           <Box 
@@ -373,25 +336,6 @@ const StorytellerDetailPage = () => {
                   )}
                 </HStack>
               </Box>
-              {/* Action Buttons */}
-              <ButtonGroup size="sm" variant="outline">
-                <Tooltip label="Edit Storyteller">
-                  <IconButton
-                    icon={<EditIcon />}
-                    aria-label="Edit storyteller"
-                    onClick={onEditOpen}
-                    colorScheme="blue"
-                  />
-                </Tooltip>
-                <Tooltip label="Delete Storyteller">
-                  <IconButton
-                    icon={<DeleteIcon />}
-                    aria-label="Delete storyteller"
-                    onClick={onDeleteOpen}
-                    colorScheme="red"
-                  />
-                </Tooltip>
-              </ButtonGroup>
             </Flex>
             
             {/* Tabs Section */}
@@ -724,55 +668,16 @@ const StorytellerDetailPage = () => {
         </Flex>
       </Box>
       
-      {/* Edit Modal */}
-      <Modal isOpen={isEditOpen} onClose={onEditClose} size="xl">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Edit Storyteller</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <StorytellersForm 
-              initialData={storyteller} 
-              onSubmit={handleEditSubmit}
-            />
-          </ModalBody>
-        </ModalContent>
-      </Modal>
-      
-      {/* Delete Confirmation Modal */}
-      <Modal isOpen={isDeleteOpen} onClose={onDeleteClose}>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Confirm Delete</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Text>Are you sure you want to delete {storyteller.Name}? This action cannot be undone.</Text>
-          </ModalBody>
-          <ModalFooter>
-            <Button mr={3} onClick={onDeleteClose}>
-              Cancel
-            </Button>
-            <Button 
-              colorScheme="red" 
-              onClick={handleDelete}
-              isLoading={deleteInProgress}
-              loadingText="Deleting..."
-            >
-              Delete
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-      
-      {/* Add Media Detail Modal */}
-      <MediaDetailModal 
-         isOpen={isMediaModalOpen}
-         onClose={onMediaModalClose}
-         media={selectedMediaForModal}
-         allStorytellers={allStorytellers}
-         allThemes={relatedThemes}
-         allQuotes={allQuotes}
-       />
+      {selectedMediaForModal && (
+         <MediaDetailModal 
+            isOpen={isMediaModalOpen}
+            onClose={onMediaModalClose}
+            media={selectedMediaForModal}
+            allStorytellers={allStorytellers}
+            allThemes={relatedThemes}
+            allQuotes={allQuotes}
+          />
+      )}
     </Container>
   );
 };

@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"  # Map to Vite port configured in vite.config.ts
+    volumes:
+      - .:/app  # Mount current directory for hot-reload
+      - /app/node_modules  # Exclude node_modules from volume mount
+    environment:
+      - CHOKIDAR_USEPOLLING=true  # Enable file watching in Docker
+    stdin_open: true
+    tty: true
+
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
