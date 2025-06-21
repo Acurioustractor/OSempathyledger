@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Box, Heading, SimpleGrid } from '@chakra-ui/react';
 import { Story } from '../../types';
-import { dataService } from '../../services/cachedDataService';
+import { cachedDataService as dataService } from '../../services/cachedDataService';
 import StoryCard from '../StoryCard';
 
 interface YouMightAlsoLikeProps {
