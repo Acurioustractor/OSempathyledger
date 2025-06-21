@@ -1,44 +1,10 @@
-import {
-  mcp_airtable_list_records,
-  mcp_airtable_create_record,
-  mcp_airtable_update_records,
-  mcp_airtable_delete_records,
-} from 'mcp';
+// Note: MCP tools are provided by Claude and not available as npm imports
+// This service will use mock data for testing
 import { logError } from './logger';
+import { Media, Story, Storyteller, Theme, Tag, Quote, FetchOptions } from '../types';
 
-// --- TYPE DEFINITIONS ---
-export interface Media {
-  id: string;
-  [key: string]: any;
-}
-export interface Story {
-  id: string;
-  [key: string]: any;
-}
-export interface Storyteller {
-  id: string;
-  Name: string;
-  [key: string]: any;
-}
-export interface Theme {
-  id: string;
-  'Theme Name': string;
-  [key:string]: any;
-}
-export interface Tag {
-  id: string;
-  [key: string]: any;
-}
-export interface Quote {
-  id: string;
-  [key: string]: any;
-}
-export interface FetchOptions {
-  filterByFormula?: string;
-  maxRecords?: number;
-  sort?: { field: string; direction: 'asc' | 'desc' }[];
-  view?: string;
-}
+// Re-export mock functions for now
+export * from './mockAirtableService';
 
 // --- ERROR HANDLING ---
 export class AirtableError extends Error {
@@ -47,6 +13,9 @@ export class AirtableError extends Error {
     this.name = 'AirtableError';
   }
 }
+
+// The rest of this file is temporarily disabled while using mock data
+/*
 
 // --- ENVIRONMENT & MCP CONFIG ---
 const BASE_ID = process.env.AIRTABLE_BASE_ID!;
@@ -126,33 +95,4 @@ export const fetchStories = (options?: FetchOptions): Promise<Story[]> => listRe
 export const fetchStorytellers = (options?: FetchOptions): Promise<Storyteller[]> => listRecords<Storyteller>(STORYTELLERS_TABLE_ID, options);
 export const fetchThemes = (options?: FetchOptions): Promise<Theme[]> => listRecords<Theme>(THEMES_TABLE_ID, options);
 export const fetchTags = (options?: FetchOptions): Promise<Tag[]> => listRecords<Tag>(TAGS_TABLE_ID, options);
-export const fetchQuotes = (options?: FetchOptions): Promise<Quote[]> => listRecords<Quote>(QUOTES_TABLE_ID, options);
-
-export const createRecord = (tableName: string, data: any): Promise<any> => {
-    const tableId = getTableIdFromName(tableName);
-    return mcpCreateRecord(tableId, data);
-};
-
-export const createMedia = (data: any): Promise<Media> => createRecord('Media', data);
-
-export const updateRecord = (tableName: string, recordId: string, data: any): Promise<void> => {
-    const tableId = getTableIdFromName(tableName);
-    return mcpUpdateRecord(tableId, recordId, data);
-};
-
-export const deleteRecord = (tableName: string, recordId: string): Promise<void> => {
-    const tableId = getTableIdFromName(tableName);
-    return mcpDeleteRecord(tableId, recordId);
-};
-
-export const fetchRecordById = async <T,>(
-  tableName: string,
-  recordId: string,
-): Promise<T> => {
-  const table = getAirtableTable(tableName);
-  const record = await table.find(recordId);
-  if (!record) {
-    throw new Error(`Record with ID ${recordId} not found in table ${tableName}`);
-  }
-  return { id: record.id, ...record.fields } as T;
-};
+export const fetchQuotes = (options?: FetchOptions): Promise<Quote[]> => listRecords<Quote>(QUOTES_TABLE_ID, options);*/

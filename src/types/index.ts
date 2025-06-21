@@ -23,3 +23,42 @@ export * from './shifts';
 
 // Re-export story types
 export * from './stories';
+
+export interface Media {
+  id: string;
+  [key: string]: any;
+}
+
+export interface Story {
+  id: string;
+  [key: string]: any;
+}
+
+export interface Storyteller {
+  id: string;
+  Name: string;
+  [key: string]: any;
+}
+
+export interface Theme {
+  id: string;
+  'Theme Name': string;
+  [key:string]: any;
+}
+
+export interface Tag {
+  id: string;
+  [key: string]: any;
+}
+
+export interface Quote {
+  id: string;
+  [key: string]: any;
+}
+
+export interface FetchOptions {
+  filterByFormula?: string;
+  maxRecords?: number;
+  sort?: { field: string; direction: 'asc' | 'desc' }[];
+  view?: string;
+}

@@ -1,80 +1,55 @@
-import React, { createContext, useContext, useMemo } from 'react';
-import useFetch from '../hooks/useFetch';
-import {
-  fetchThemes,
-  fetchStorytellers,
-  fetchMedia,
-  fetchShifts
-} from '../services/dataService';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { cachedDataService as dataService } from '../services/cachedDataService';
 import {
   Theme,
   Storyteller,
   Media,
-  Shift,
-  FetchOptions // Import FetchOptions if needed, maybe not for context
-} from '../services/airtable';
+  Story,
+  Quote,
+  Tag
+} from '../types';
+
+interface AllData {
+  media: Media[];
+  stories: Story[];
+  storytellers: Storyteller[];
+  themes: Theme[];
+  tags: Tag[];
+  quotes: Quote[];
+}
 
 interface AirtableDataContextProps {
-  themes: Theme[];
-  storytellers: Storyteller[];
-  media: Media[];
-  shifts: Shift[];
-  isLoadingThemes: boolean;
-  isLoadingStorytellers: boolean;
-  isLoadingMedia: boolean;
-  isLoadingShifts: boolean;
-  errorThemes: Error | null;
-  errorStorytellers: Error | null;
-  errorMedia: Error | null;
-  errorShifts: Error | null;
-  refetchThemes: () => Promise<void>;
-  refetchStorytellers: () => Promise<void>;
-  refetchMedia: () => Promise<void>;
-  refetchShifts: () => Promise<void>;
+  data: AllData | null;
+  isLoading: boolean;
+  error: Error | null;
 }
 
 const AirtableDataContext = createContext<AirtableDataContextProps | undefined>(undefined);
 
 export const AirtableDataProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
-  // Fetch common data with caching
-  const themesData = useFetch<Theme[]>(
-    () => fetchThemes({ pageSize: 100 }), // Airtable max pageSize is 100
-    [], [], { cacheKey: 'global_themes', cacheDuration: 30 * 60 * 1000 } // Cache 30 mins
-  );
+  const [data, setData] = useState<AllData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-  const storytellersData = useFetch<Storyteller[]>(
-    () => fetchStorytellers({ pageSize: 100 }), // Airtable max pageSize is 100
-    [], [], { cacheKey: 'global_storytellers', cacheDuration: 30 * 60 * 1000 } // Cache 30 mins
-  );
+  useEffect(() => {
+    const initData = async () => {
+      try {
+        await dataService.initialize();
+        setData(dataService.getData());
+      } catch (e) {
+        setError(e instanceof Error ? e : new Error('Failed to load data'));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    initData();
+  }, []);
 
-  const mediaData = useFetch<Media[]>(
-    () => fetchMedia({ pageSize: 100 }), // Airtable max pageSize is 100
-    [], [], { cacheKey: 'global_media', cacheDuration: 15 * 60 * 1000 } // Cache 15 mins
-  );
-
-  const shiftsData = useFetch<Shift[]>(
-    () => fetchShifts({ pageSize: 100 }), // Airtable max pageSize is 100
-    [], [], { cacheKey: 'global_shifts', cacheDuration: 30 * 60 * 1000 } // Cache 30 mins
-  );
-
-  const value = useMemo(() => ({
-    themes: themesData.data || [],
-    storytellers: storytellersData.data || [],
-    media: mediaData.data || [],
-    shifts: shiftsData.data || [],
-    isLoadingThemes: themesData.isLoading,
-    isLoadingStorytellers: storytellersData.isLoading,
-    isLoadingMedia: mediaData.isLoading,
-    isLoadingShifts: shiftsData.isLoading,
-    errorThemes: themesData.error,
-    errorStorytellers: storytellersData.error,
-    errorMedia: mediaData.error,
-    errorShifts: shiftsData.error,
-    refetchThemes: themesData.refetch,
-    refetchStorytellers: storytellersData.refetch,
-    refetchMedia: mediaData.refetch,
-    refetchShifts: shiftsData.refetch,
-  }), [themesData, storytellersData, mediaData, shiftsData]);
+  const value = {
+    data,
+    isLoading,
+    error,
+  };
 
   return (
     <AirtableDataContext.Provider value={value}>

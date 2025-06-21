@@ -54,6 +54,7 @@ import {
 import { Story, Storyteller, Theme, Media } from '../types';
 import ImageWithFallback from '../components/ImageWithFallback';
 import { motion } from 'framer-motion';
+import FilterSuggestions from '../components/filters/FilterSuggestions';
 
 const StatCard = ({ icon, label, value }: { icon: React.ElementType, label: string, value: number | string }) => {
   const bgColor = useColorModeValue('white', 'gray.700');
@@ -278,8 +279,10 @@ const HomePage: React.FC = () => {
 
       {/* Featured Stories */}
       <Container maxWidth="7xl" py={8}>
-        <Heading size="lg" mb={6}>Featured Stories</Heading>
-        <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+        <VStack spacing={6} align="stretch">
+          <Heading size="lg">Featured Stories</Heading>
+          <FilterSuggestions compact />
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
           {featuredStories.map(story => (
             <RouterLink to={`/story/${story.id}`} key={story.id} _hover={{ textDecoration: 'none' }}>
               <Box bg={cardBg} shadow="md" borderRadius="lg" overflow="hidden" h="100%" transition="all 0.2s ease-in-out" _hover={{ transform: 'translateY(-5px)', shadow: 'lg' }}>
@@ -292,7 +295,8 @@ const HomePage: React.FC = () => {
               </Box>
             </RouterLink>
           ))}
-        </SimpleGrid>
+          </SimpleGrid>
+        </VStack>
       </Container>
 
       {/* Recent Stories Section */}

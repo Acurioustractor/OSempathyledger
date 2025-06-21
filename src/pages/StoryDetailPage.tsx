@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   Box,
   Container,
@@ -23,8 +23,15 @@ import {
   BreadcrumbItem,
   BreadcrumbLink,
   SimpleGrid,
+  Tag,
 } from '@chakra-ui/react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useAirtableData } from '../context/AirtableDataContext';
+import { Story, Storyteller, Theme, Media } from '../types';
+import ImageWithFallback from '../components/ImageWithFallback';
+import YouMightAlsoLike from '../components/recommendations/YouMightAlsoLike';
+import Breadcrumbs from '../components/navigation/Breadcrumbs';
+import QuickActions from '../components/navigation/QuickActions';
 import {
   ArrowLeftIcon,
   CalendarIcon,
@@ -32,80 +39,22 @@ import {
   PeopleIcon,
   TagIcon,
 } from '@primer/octicons-react';
-import {
-  fetchRecordById,
-} from '../services/airtable';
-import { Story, Storyteller, Theme, Media } from '../types';
-import ImageWithFallback from '../components/ImageWithFallback';
 
 const StoryDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [story, setStory] = useState<Story | null>(null);
-  const [storyteller, setStoryteller] = useState<Storyteller | null>(null);
-  const [themes, setThemes] = useState<Theme[]>([]);
-  const [media, setMedia] = useState<Media[]>([]);
+  const { data, isLoading, error: dataError } = useAirtableData();
+
+  const story = data?.stories.find(s => s.id === id);
+  const storyteller = story && data?.storytellers.find(s => s.id === story.Storytellers?.[0]);
+  const themes = story && data?.themes.filter(t => story.Themes?.includes(t.id));
+  const media = story && data?.media.filter(m => story.Media?.includes(m.id));
 
   const bgColor = useColorModeValue('gray.50', 'gray.900');
   const cardBg = useColorModeValue('white', 'gray.800');
   const accentColor = useColorModeValue('orange.500', 'orange.300');
   
-  useEffect(() => {
-    if (!id) {
-      setError("No story ID provided.");
-      setLoading(false);
-      return;
-    }
-    
-    const loadStoryData = async () => {
-      try {
-        setLoading(true);
-        const storyData = await fetchRecordById<Story>('Stories', id);
-        setStory(storyData);
-
-        // Fetch linked records
-        const fetchPromises = [];
-
-        if (storyData.Storytellers && storyData.Storytellers.length > 0) {
-          fetchPromises.push(
-            fetchRecordById<Storyteller>('Storytellers', storyData.Storytellers[0])
-              .then(setStoryteller)
-          );
-        }
-
-        if (storyData.Themes && storyData.Themes.length > 0) {
-          fetchPromises.push(
-            Promise.all(storyData.Themes.map(themeId => fetchRecordById<Theme>('Themes', themeId)))
-              .then(setThemes)
-          );
-        }
-
-        if (storyData.Media && storyData.Media.length > 0) {
-          fetchPromises.push(
-            Promise.all(storyData.Media.map(mediaId => fetchRecordById<Media>('Media', mediaId)))
-              .then(setMedia)
-          );
-        }
-
-        await Promise.all(fetchPromises);
-
-      } catch (err) {
-        console.error('Error loading story:', err);
-        setError('Failed to load story data. It may have been deleted or the link is incorrect.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadStoryData();
-  }, [id]);
-
-  const storyImage = story?.['Story Image']?.[0]?.url;
-
-  if (loading) {
+  if (isLoading) {
     return (
       <Container maxWidth="7xl" py={8}>
         <VStack spacing={8}>
@@ -116,12 +65,12 @@ const StoryDetailPage: React.FC = () => {
     );
   }
 
-  if (error || !story) {
+  if (dataError || !story) {
     return (
       <Container maxWidth="7xl" py={8}>
         <Alert status="error" mb={4}>
           <AlertIcon />
-          {error || 'Story not found.'}
+          {dataError?.message || 'Story not found.'}
         </Alert>
         <Button onClick={() => navigate('/stories')} leftIcon={<ArrowLeftIcon />}>
           Back to Stories
@@ -130,21 +79,13 @@ const StoryDetailPage: React.FC = () => {
     );
   }
 
+  const storyImage = story?.['Story Image']?.[0]?.url;
+
   return (
     <Box minH="100vh" bg={bgColor}>
       <Container maxWidth="5xl" py={{ base: 6, md: 12 }}>
         <VStack spacing={8} align="stretch">
-          <Breadcrumb>
-            <BreadcrumbItem>
-              <BreadcrumbLink as={RouterLink} to="/">Home</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbItem>
-              <BreadcrumbLink as={RouterLink} to="/stories">Stories</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbItem isCurrentPage>
-              <Text noOfLines={1}>{story.Title}</Text>
-            </BreadcrumbItem>
-          </Breadcrumb>
+          <Breadcrumbs story={story} />
           
           <article>
             <VStack spacing={8} align="stretch">
@@ -158,7 +99,7 @@ const StoryDetailPage: React.FC = () => {
 
               <HStack spacing={4} align="center">
                 {storyteller && (
-                   <HStack as={RouterLink} to={`/storytellers/${storyteller.id}`} spacing={3} _hover={{ textDecoration: 'underline' }}>
+                   <HStack as={RouterLink} to={`/storyteller/${storyteller.id}`} spacing={3} _hover={{ textDecoration: 'underline' }}>
                     <Avatar size="md" name={storyteller.Name} src={storyteller.Avatar?.[0]?.url} />
                     <VStack align="start" spacing={0}>
                       <Text fontWeight="bold">{storyteller.Name}</Text>
@@ -178,7 +119,7 @@ const StoryDetailPage: React.FC = () => {
                 <Text whiteSpace="pre-wrap">{story['Story copy'] || story['Story Transcript']}</Text>
               </Box>
 
-              {themes.length > 0 && (
+              {themes && themes.length > 0 && (
                 <>
                   <Divider />
                   <VStack align="start" spacing={3}>
@@ -196,7 +137,7 @@ const StoryDetailPage: React.FC = () => {
                 </>
               )}
 
-              {media.length > 0 && (
+              {media && media.length > 0 && (
                  <>
                   <Divider />
                   <VStack align="start" spacing={3}>
@@ -218,12 +159,17 @@ const StoryDetailPage: React.FC = () => {
               )}
             </VStack>
           </article>
+          
+          <Divider />
+
+          <YouMightAlsoLike currentItem={story} />
 
           <Button mt={8} onClick={() => navigate('/stories')} leftIcon={<ArrowLeftIcon />} variant="outline">
             Back to All Stories
           </Button>
         </VStack>
       </Container>
+      <QuickActions context="story" storyId={story?.id} />
     </Box>
   );
 };

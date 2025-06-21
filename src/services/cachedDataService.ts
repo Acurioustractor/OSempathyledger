@@ -1,183 +1,149 @@
-/**
- * Cached Data Service
- * Wraps the regular data service with caching functionality
- */
+import {
+  fetchMedia,
+  fetchStories,
+  fetchStorytellers,
+  fetchThemes,
+  fetchTags,
+  fetchQuotes,
+} from './airtable';
+import { Media, Story, Storyteller, Theme, Tag, Quote } from '../types';
 
-import enhancedCache from './enhancedCacheService';
-import * as dataService from './dataService';
-import { Story, Storyteller, Theme, Media, Quote, Shift, Gallery, Tag } from '../types';
+interface AllData {
+  media: Media[];
+  stories: Story[];
+  storytellers: Storyteller[];
+  themes: Theme[];
+  tags: Tag[];
+  quotes: Quote[];
+}
 
-// Cache configuration
-const CACHE_OPTIONS = {
-  ttl: 5 * 60 * 1000, // 5 minutes
-  useLocalStorage: true
-};
+class CachedDataService {
+  private data: AllData | null = null;
+  private isInitialized = false;
 
-// Table names for cache keys
-const CACHE_KEYS = {
-  STORIES: 'stories',
-  STORYTELLERS: 'storytellers',
-  THEMES: 'themes',
-  MEDIA: 'media',
-  QUOTES: 'quotes',
-  SHIFTS: 'shifts',
-  GALLERIES: 'galleries',
-  TAGS: 'tags'
-} as const;
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
 
-/**
- * Fetch stories with caching
- */
-export const fetchStories = async (): Promise<Story[]> => {
-  return enhancedCache.getTableData(
-    CACHE_KEYS.STORIES,
-    dataService.fetchStories,
-    CACHE_OPTIONS
-  );
-};
+    const [media, stories, storytellers, themes, tags, quotes] = await Promise.all([
+      fetchMedia(),
+      fetchStories(),
+      fetchStorytellers(),
+      fetchThemes(),
+      fetchTags(),
+      fetchQuotes(),
+    ]);
 
-/**
- * Fetch storytellers with caching
- */
-export const fetchStorytellers = async (): Promise<Storyteller[]> => {
-  return enhancedCache.getTableData(
-    CACHE_KEYS.STORYTELLERS,
-    dataService.fetchStorytellers,
-    CACHE_OPTIONS
-  );
-};
-
-/**
- * Fetch themes with caching
- */
-export const fetchThemes = async (): Promise<Theme[]> => {
-  return enhancedCache.getTableData(
-    CACHE_KEYS.THEMES,
-    dataService.fetchThemes,
-    CACHE_OPTIONS
-  );
-};
-
-/**
- * Fetch media with caching
- */
-export const fetchMedia = async (): Promise<Media[]> => {
-  return enhancedCache.getTableData(
-    CACHE_KEYS.MEDIA,
-    dataService.fetchMedia,
-    CACHE_OPTIONS
-  );
-};
-
-/**
- * Fetch quotes with caching
- */
-export const fetchQuotes = async (): Promise<Quote[]> => {
-  return enhancedCache.getTableData(
-    CACHE_KEYS.QUOTES,
-    dataService.fetchQuotes,
-    CACHE_OPTIONS
-  );
-};
-
-/**
- * Fetch shifts with caching
- */
-export const fetchShifts = async (): Promise<Shift[]> => {
-  return enhancedCache.getTableData(
-    CACHE_KEYS.SHIFTS,
-    dataService.fetchShifts,
-    CACHE_OPTIONS
-  );
-};
-
-/**
- * Fetch galleries with caching
- */
-export const fetchGalleries = async (): Promise<Gallery[]> => {
-  return enhancedCache.getTableData(
-    CACHE_KEYS.GALLERIES,
-    dataService.fetchGalleries,
-    CACHE_OPTIONS
-  );
-};
-
-/**
- * Fetch tags with caching
- */
-export const fetchTags = async (): Promise<Tag[]> => {
-  return enhancedCache.getTableData(
-    CACHE_KEYS.TAGS,
-    dataService.fetchTags,
-    CACHE_OPTIONS
-  );
-};
-
-/**
- * Batch fetch multiple tables with caching
- */
-export const batchFetch = async () => {
-  return enhancedCache.batchFetch({
-    stories: fetchStories,
-    storytellers: fetchStorytellers,
-    themes: fetchThemes,
-    media: fetchMedia,
-    quotes: fetchQuotes
-  });
-};
-
-/**
- * Clear specific cache
- */
-export const clearCache = (key?: keyof typeof CACHE_KEYS) => {
-  if (key) {
-    enhancedCache.remove(CACHE_KEYS[key]);
-  } else {
-    enhancedCache.clear();
+    this.data = { media, stories, storytellers, themes, tags, quotes };
+    this.isInitialized = true;
+    console.log('CachedDataService initialized');
   }
-};
 
-/**
- * Get cache statistics
- */
-export const getCacheStats = () => {
-  return enhancedCache.getStats();
-};
-
-/**
- * Invalidate cache and fetch fresh data
- */
-export const refreshData = async (key: keyof typeof CACHE_KEYS) => {
-  enhancedCache.remove(CACHE_KEYS[key]);
-  
-  switch (key) {
-    case 'STORIES':
-      return fetchStories();
-    case 'STORYTELLERS':
-      return fetchStorytellers();
-    case 'THEMES':
-      return fetchThemes();
-    case 'MEDIA':
-      return fetchMedia();
-    case 'QUOTES':
-      return fetchQuotes();
-    case 'SHIFTS':
-      return fetchShifts();
-    case 'GALLERIES':
-      return fetchGalleries();
-    case 'TAGS':
-      return fetchTags();
+  private assertData(): AllData {
+    if (!this.data) {
+      throw new Error('Data service not initialized. Call initialize() first.');
+    }
+    return this.data;
   }
-};
 
-// Re-export non-cached operations
-export const createRecord = dataService.createRecord;
-export const updateRecord = dataService.updateRecord;
-export const deleteRecord = dataService.deleteRecord;
+  getAllStoriesSync(): Story[] {
+    return this.assertData().stories;
+  }
 
-// Re-export search if available
-export const searchStories = dataService.searchStories;
-export const getStoryAnalytics = dataService.getStoryAnalytics;
+  getAllMediaSync(): Media[] {
+    return this.assertData().media;
+  }
 
-// Re-export types
-export * from '../types';
+  getAllThemesSync(): Theme[] {
+    return this.assertData().themes;
+  }
+
+  getAllStorytellersSync(): Storyteller[] {
+    return this.assertData().storytellers;
+  }
+    
+  getAllQuotesSync(): Quote[] {
+    return this.assertData().quotes;
+  }
+
+  getStoryByIdSync(id: string): Story | undefined {
+    return this.assertData().stories.find(s => s.id === id);
+  }
+
+
+  getRecommendations(currentItem: Story): Story[] {
+    const allStories = this.assertData().stories;
+
+    const currentThemeIds = new Set(currentItem.Themes || []);
+    const currentStorytellerIds = new Set(currentItem['All Storytellers'] || []);
+
+    return allStories
+      .filter(story => story.id !== currentItem.id)
+      .map(story => {
+        const sharedThemes = new Set([...currentThemeIds].filter(id => (story.Themes || []).includes(id)));
+        const sharedStorytellers = new Set([...currentStorytellerIds].filter(id => (story['All Storytellers'] || []).includes(id)));
+        
+        const score = sharedThemes.size + sharedStorytellers.size;
+
+        return { story, score };
+      })
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(item => item.story);
+  }
+
+  getThemeRecommendations(currentItem: Theme): Theme[] {
+    const allStories = this.assertData().stories;
+    const allThemes = this.assertData().themes;
+
+    const storiesWithCurrentTheme = allStories.filter(story => (story.Themes || []).includes(currentItem.id));
+    const relatedThemeIds = new Map<string, number>();
+
+    storiesWithCurrentTheme.forEach(story => {
+        (story.Themes || []).forEach(themeId => {
+            if (themeId !== currentItem.id) {
+                relatedThemeIds.set(themeId, (relatedThemeIds.get(themeId) || 0) + 1);
+            }
+        });
+    });
+
+    return Array.from(relatedThemeIds.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([themeId]) => allThemes.find(t => t.id === themeId))
+        .filter((t): t is Theme => t !== undefined);
+  }
+
+  getStorytellerRecommendations(currentItem: Storyteller): Storyteller[] {
+    const allStories = this.assertData().stories;
+    const allStorytellers = this.assertData().storytellers;
+
+    const storiesWithCurrentStoryteller = allStories.filter(story => (story['All Storytellers'] || []).includes(currentItem.id));
+    const relatedStorytellerIds = new Map<string, number>();
+
+    storiesWithCurrentStoryteller.forEach(story => {
+        (story['All Storytellers'] || []).forEach(storytellerId => {
+            if (storytellerId !== currentItem.id) {
+                relatedStorytellerIds.set(storytellerId, (relatedStorytellerIds.get(storytellerId) || 0) + 1);
+            }
+        });
+    });
+
+    return Array.from(relatedStorytellerIds.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([storytellerId]) => allStorytellers.find(st => st.id === storytellerId))
+        .filter((st): st is Storyteller => st !== undefined);
+  }
+
+  getMediaRecommendations(currentItem: Media): Media[] {
+    const allMedia = this.assertData().media;
+    const storyId = currentItem.StoryID?.[0];
+
+    if (!storyId) return [];
+
+    return allMedia.filter(media => media.id !== currentItem.id && media.StoryID?.[0] === storyId).slice(0, 5);
+  }
+}
+
+export const cachedDataService = new CachedDataService(); 

@@ -48,6 +48,8 @@ import {
   ExternalLinkIcon, 
   ChatIcon
 } from '@chakra-ui/icons';
+import Breadcrumbs from '../components/navigation/Breadcrumbs';
+import QuickActions from '../components/navigation/QuickActions';
 import {
   Storyteller, 
   fetchStorytellers, 
@@ -63,6 +65,7 @@ import {
 import { FaImage, FaVideo, FaCube } from 'react-icons/fa';
 import { getProfileImageOrFallback } from '../services/imageUtils';
 import MediaDetailModal from "../components/MediaDetailModal";
+import RelatedStorytellers from '../components/recommendations/RelatedStorytellers';
 
 const StorytellerDetailPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -280,18 +283,21 @@ const StorytellerDetailPage = () => {
   const profileImageUrl = getProfileImageOrFallback(storyteller.Name, storyteller['File Profile Image']);
   
   return (
-    <Container maxW="container.lg" py={8}>
-      <Flex direction={{ base: 'column', md: 'row' }}>
-        <HStack spacing={4}>
-          <Button
-            leftIcon={<ChevronLeftIcon />}
-            onClick={() => navigate('/storytellers')}
-            variant="outline"
-          >
-            Back to Storytellers
-          </Button>
-        </HStack>
-      </Flex>
+    <Box minH="100vh" bg={useColorModeValue('gray.50', 'gray.900')}>
+      <Container maxW="container.lg" py={8}>
+        <VStack spacing={4} align="stretch">
+        <Breadcrumbs storyteller={storyteller} />
+        <Flex direction={{ base: 'column', md: 'row' }}>
+          <HStack spacing={4}>
+            <Button
+              leftIcon={<ChevronLeftIcon />}
+              onClick={() => navigate('/storytellers')}
+              variant="outline"
+            >
+              Back to Storytellers
+            </Button>
+          </HStack>
+        </Flex>
       
       <Box p={6} bg={bgColor} borderRadius="lg" borderWidth="1px" borderColor={borderColor}>
         <Flex direction={{ base: 'column', md: 'row' }}>
@@ -678,7 +684,12 @@ const StorytellerDetailPage = () => {
             allQuotes={allQuotes}
           />
       )}
-    </Container>
+
+      {storyteller && <RelatedStorytellers currentStoryteller={storyteller} />}
+        </VStack>
+      </Container>
+      <QuickActions context="global" />
+    </Box>
   );
 };
 

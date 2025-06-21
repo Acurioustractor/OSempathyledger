@@ -34,6 +34,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <Box fontWeight="bold">Empathy Ledger</Box>
             <HStack as={'nav'} spacing={4} display={{ base: 'none', md: 'flex' }}>
               <NavLink to="/">Home</NavLink>
+              <NavLink to="/dashboard">Dashboard</NavLink>
               <NavLink to="/stories">Stories</NavLink>
               <NavLink to="/media">Media</NavLink>
               <NavLink to="/themes">Themes</NavLink>

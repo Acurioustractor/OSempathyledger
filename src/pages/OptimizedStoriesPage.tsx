@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Container,
   Heading,
@@ -6,18 +6,12 @@ import {
   VStack,
   HStack,
   Box,
-  SimpleGrid,
   Flex,
   Badge,
   useColorModeValue,
   Spinner,
   Alert,
   AlertIcon,
-  Image,
-  AspectRatio,
-  Tag,
-  Wrap,
-  WrapItem,
   Icon,
   Divider,
   IconButton,
@@ -30,6 +24,9 @@ import {
   InputLeftElement,
   Button,
   ButtonGroup,
+  Switch,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react';
 import {
   CalendarIcon,
@@ -38,6 +35,7 @@ import {
   SearchIcon,
   ListUnorderedIcon,
   KebabHorizontalIcon,
+  RocketIcon,
 } from '@primer/octicons-react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -51,11 +49,12 @@ import StoryCard from '../components/StoryCard';
 import Breadcrumbs from '../components/navigation/Breadcrumbs';
 import QuickActions from '../components/navigation/QuickActions';
 import FilterSuggestions from '../components/filters/FilterSuggestions';
-import ImageWithFallback from '../components/ImageWithFallback';
+import { UniformVirtualScrollList } from '../components/VirtualScrollList';
+import { performanceMonitor } from '../utils/performanceMonitor';
 
 type ViewMode = 'grid' | 'list';
 
-const StoriesPage: React.FC = () => {
+const OptimizedStoriesPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,22 +64,33 @@ const StoriesPage: React.FC = () => {
   const [media, setMedia] = useState<Media[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchTerm, setSearchTerm] = useState('');
+  const [useVirtualScroll, setUseVirtualScroll] = useState(true);
   
   const bgColor = useColorModeValue('gray.50', 'gray.900');
   const cardBg = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
-  const columns = useBreakpointValue({ base: 1, md: 2, lg: viewMode === 'list' ? 1 : 3 });
+  const columns = useBreakpointValue({ 
+    base: 1, 
+    md: viewMode === 'list' ? 1 : 2, 
+    lg: viewMode === 'list' ? 1 : 3,
+    xl: viewMode === 'list' ? 1 : 4,
+  }) || 1;
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
+        performanceMonitor.startMeasure('data-fetch');
+        
         const [storiesData, storytellersData, themesData, mediaData] = await Promise.all([
           fetchStories(),
           fetchStorytellers(),
           fetchThemes(),
           fetchMedia(),
         ]);
+        
+        const fetchTime = performanceMonitor.endMeasure('data-fetch');
+        console.log(`Data fetching completed in ${fetchTime.toFixed(2)}ms`);
         
         setStories(storiesData);
         setStorytellers(storytellersData);
@@ -97,13 +107,24 @@ const StoriesPage: React.FC = () => {
   }, []);
 
   const filteredStories = useMemo(() => {
-    return stories.filter(story => 
-      story.Title.toLowerCase().includes(searchTerm.toLowerCase())
+    performanceMonitor.startMeasure('filter-stories');
+    
+    const filtered = stories.filter(story => 
+      story.Title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      story['Story copy']?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      story['Story Transcript']?.toLowerCase().includes(searchTerm.toLowerCase())
     );
+    
+    const filterTime = performanceMonitor.endMeasure('filter-stories');
+    if (filtered.length !== stories.length) {
+      console.log(`Filtering ${stories.length} stories took ${filterTime.toFixed(2)}ms`);
+    }
+    
+    return filtered;
   }, [stories, searchTerm]);
 
   // Helper functions
-  const getStoryImage = (story: Story): string | undefined => {
+  const getStoryImage = useCallback((story: Story): string | undefined => {
     if (story['Story Image']?.[0]?.url) {
       return story['Story Image'][0].url;
     }
@@ -114,22 +135,35 @@ const StoriesPage: React.FC = () => {
       }
     }
     return undefined;
-  };
+  }, [media]);
 
-  const getStorySummary = (story: Story): string => {
+  const getStorySummary = useCallback((story: Story): string => {
     const content = story['Story copy'] || story['Story Transcript'] || '';
     return content.length > 200 ? content.substring(0, 200) + '...' : content;
-  };
+  }, []);
 
-  const getStorytellerName = (storytellerId: string): string => {
+  const getStorytellerName = useCallback((storytellerId: string): string => {
     const teller = storytellers.find(s => s.id === storytellerId);
     return teller?.Name || 'Anonymous';
-  };
+  }, [storytellers]);
 
-  const getThemeName = (themeId: string): string => {
+  const getThemeName = useCallback((themeId: string): string => {
     const theme = themes.find(t => t.id === themeId);
     return theme?.['Theme Name'] || '';
-  };
+  }, [themes]);
+
+  // Render story card for virtual scroll
+  const renderStoryCard = useCallback((story: Story, index: number) => {
+    return (
+      <StoryCard 
+        story={story}
+        getStoryImage={getStoryImage}
+        getStorySummary={getStorySummary}
+        getStorytellerName={getStorytellerName}
+        getThemeName={getThemeName}
+      />
+    );
+  }, [getStoryImage, getStorySummary, getStorytellerName, getThemeName]);
 
   if (loading) {
     return (
@@ -137,14 +171,14 @@ const StoriesPage: React.FC = () => {
         <VStack spacing={8} align="stretch">
           <Skeleton height="40px" width="200px" />
           <Skeleton height="40px" width="300px" />
-          <SimpleGrid columns={columns} spacing={6}>
+          <Stack spacing={6}>
             {[1, 2, 3, 4, 5, 6].map(i => (
               <Box key={i}>
                 <Skeleton height="200px" mb={4} />
                 <SkeletonText noOfLines={4} />
               </Box>
             ))}
-          </SimpleGrid>
+          </Stack>
         </VStack>
       </Container>
     );
@@ -160,6 +194,9 @@ const StoriesPage: React.FC = () => {
       </Container>
     );
   }
+
+  const itemHeight = viewMode === 'list' ? 120 : 380;
+  const gap = 24;
 
   return (
     <Box minH="100vh" bg={bgColor}>
@@ -179,41 +216,74 @@ const StoriesPage: React.FC = () => {
                 <Icon as={SearchIcon} color="gray.300" />
               </InputLeftElement>
               <Input 
-                placeholder="Search stories by title..."
+                placeholder="Search stories..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </InputGroup>
-            <ButtonGroup isAttached variant="outline">
-              <IconButton 
-                aria-label="Grid view" 
-                icon={<KebabHorizontalIcon />} 
-                isActive={viewMode === 'grid'}
-                onClick={() => setViewMode('grid')}
-              />
-              <IconButton 
-                aria-label="List view" 
-                icon={<ListUnorderedIcon />} 
-                isActive={viewMode === 'list'}
-                onClick={() => setViewMode('list')}
-              />
-            </ButtonGroup>
+            
+            <HStack spacing={4}>
+              <FormControl display="flex" alignItems="center">
+                <FormLabel htmlFor="virtual-scroll" mb="0" fontSize="sm">
+                  <HStack spacing={2}>
+                    <Icon as={RocketIcon} />
+                    <Text>Performance Mode</Text>
+                  </HStack>
+                </FormLabel>
+                <Switch 
+                  id="virtual-scroll" 
+                  isChecked={useVirtualScroll}
+                  onChange={(e) => setUseVirtualScroll(e.target.checked)}
+                  colorScheme="orange"
+                />
+              </FormControl>
+              
+              <ButtonGroup isAttached variant="outline">
+                <IconButton 
+                  aria-label="Grid view" 
+                  icon={<KebabHorizontalIcon />} 
+                  isActive={viewMode === 'grid'}
+                  onClick={() => setViewMode('grid')}
+                />
+                <IconButton 
+                  aria-label="List view" 
+                  icon={<ListUnorderedIcon />} 
+                  isActive={viewMode === 'list'}
+                  onClick={() => setViewMode('list')}
+                />
+              </ButtonGroup>
+            </HStack>
           </Flex>
           
           <FilterSuggestions compact />
           
-          <SimpleGrid columns={columns} spacing={6}>
-            {filteredStories.map(story => (
-              <StoryCard 
-                key={story.id}
-                story={story}
-                getStoryImage={getStoryImage}
-                getStorySummary={getStorySummary}
-                getStorytellerName={getStorytellerName}
-                getThemeName={getThemeName}
+          {useVirtualScroll && filteredStories.length > 20 ? (
+            <Box>
+              <HStack mb={4} spacing={4}>
+                <Badge colorScheme="green">Virtual Scrolling Active</Badge>
+                <Text fontSize="sm" color="gray.500">
+                  Rendering {filteredStories.length} stories efficiently
+                </Text>
+              </HStack>
+              <UniformVirtualScrollList
+                items={filteredStories}
+                itemHeight={itemHeight}
+                renderItem={renderStoryCard}
+                columns={columns}
+                gap={gap}
+                height="calc(100vh - 400px)"
+                overscan={2}
               />
-            ))}
-          </SimpleGrid>
+            </Box>
+          ) : (
+            <Box
+              display="grid"
+              gridTemplateColumns={`repeat(${columns}, 1fr)`}
+              gap={6}
+            >
+              {filteredStories.map((story, index) => renderStoryCard(story, index))}
+            </Box>
+          )}
 
           {filteredStories.length === 0 && !loading && (
             <Text textAlign="center" py={10}>No stories found.</Text>
@@ -226,4 +296,4 @@ const StoriesPage: React.FC = () => {
   );
 };
 
-export default StoriesPage;
+export default OptimizedStoriesPage;
