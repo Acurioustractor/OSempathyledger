@@ -155,5 +155,189 @@
       "updated": "2025-06-21T07:36:13.915Z",
       "description": "Tasks for master context"
     }
+  },
+  "vision-v2": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Setup Project Repository and Initial Configuration",
+        "description": "Initialize the project repository with React, Chakra UI, and D3.js dependencies, and configure basic project structure.",
+        "details": "Create a new React project using create-react-app or Vite. Install Chakra UI and D3.js. Set up basic folder structure for components, services, and utilities. Configure linting and formatting.",
+        "testStrategy": "Verify project setup by running the development server and checking for successful installation of all dependencies.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending"
+      },
+      {
+        "id": 2,
+        "title": "Establish Data Fetching Service",
+        "description": "Implement and test the data fetching service using the existing airtable.ts service.",
+        "details": "Integrate airtable.ts into the project. Ensure it can fetch stories, themes, storytellers, and media. Add error handling and logging.",
+        "testStrategy": "Test fetching data from Airtable and verify data structure matches expected schema.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 3,
+        "title": "Design and Implement Core Data Model",
+        "description": "Define and implement the core data model for stories, themes, storytellers, and media.",
+        "details": "Create TypeScript interfaces/types for each entity. Ensure relationships (e.g., story-theme, story-storyteller) are modeled. Validate data consistency.",
+        "testStrategy": "Test data model with sample data and verify relationships are correctly represented.",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 4,
+        "title": "Build Theme Network Graph Visualization",
+        "description": "Develop an interactive force-directed graph using D3.js to visualize relationships between themes, stories, and storytellers.",
+        "details": "Use D3.js to render a force-directed graph. Implement node/edge highlighting, filtering, and navigation to related content. Ensure performance with large datasets.",
+        "testStrategy": "Test graph rendering, interaction, and navigation. Validate data accuracy and responsiveness.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 5,
+        "title": "Implement Story Flow Timeline Visualization",
+        "description": "Create a chronological timeline visualization for stories, filterable by date, location, and project.",
+        "details": "Use D3.js to render a timeline. Add filtering by date range, location, and project. Enable clicking on timeline points to reveal stories.",
+        "testStrategy": "Test timeline rendering, filtering, and story display. Verify data accuracy and interaction.",
+        "priority": "medium",
+        "dependencies": [
+          3
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 6,
+        "title": "Develop Geographic Clustering Map",
+        "description": "Build a map that clusters stories and media by location, with zoom and click functionality.",
+        "details": "Use D3.js or a mapping library (e.g., Leaflet) to render a map. Implement clustering, zoom, and click-to-view content. Ensure performance with many points.",
+        "testStrategy": "Test map rendering, clustering, zoom, and content display. Validate data accuracy and interaction.",
+        "priority": "medium",
+        "dependencies": [
+          3
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 7,
+        "title": "Design and Implement Universal Filtering System",
+        "description": "Create a persistent, multi-dimensional filtering system for the entire application.",
+        "details": "Build a filter component using Chakra UI. Support filtering by theme, storyteller, project, location, and date. Persist filter state across navigation.",
+        "testStrategy": "Test filter application, persistence, and data consistency across views.",
+        "priority": "high",
+        "dependencies": [
+          3
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 8,
+        "title": "Integrate Filtering with Visualizations",
+        "description": "Connect the universal filtering system to all visualizations.",
+        "details": "Update visualizations to respond to filter changes. Ensure data consistency and performance.",
+        "testStrategy": "Test filtering on each visualization. Verify data updates and performance.",
+        "priority": "high",
+        "dependencies": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 9,
+        "title": "Build Content-Based Recommendation Engine",
+        "description": "Develop a recommendation engine that suggests related content based on shared attributes.",
+        "details": "Implement logic to recommend stories, themes, or storytellers based on shared attributes (themes, storytellers, locations). Display recommendations on detail pages.",
+        "testStrategy": "Test recommendation logic with various data combinations. Verify display and relevance.",
+        "priority": "medium",
+        "dependencies": [
+          3
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 10,
+        "title": "Implement 'You Might Also Like' Component",
+        "description": "Add a component to all detail pages that displays recommended content.",
+        "details": "Create a reusable component using Chakra UI. Fetch and display recommendations from the recommendation engine.",
+        "testStrategy": "Test component rendering and recommendation display on all detail pages.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending"
+      },
+      {
+        "id": 11,
+        "title": "Design and Implement State Management Solution",
+        "description": "Set up robust client-side state management for filters and visualizations.",
+        "details": "Choose and implement a state management solution (e.g., Redux, Zustand, or React Context). Manage filter state and visualization data.",
+        "testStrategy": "Test state persistence, updates, and synchronization across components.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending"
+      },
+      {
+        "id": 12,
+        "title": "Implement Contextual Filter Suggestions",
+        "description": "Add logic to suggest relevant filters based on the current view.",
+        "details": "Analyze current data and suggest filters (e.g., popular themes, recent storytellers). Display suggestions near the filter component.",
+        "testStrategy": "Test filter suggestion logic and display. Verify relevance and usability.",
+        "priority": "low",
+        "dependencies": [],
+        "status": "pending"
+      },
+      {
+        "id": 13,
+        "title": "Optimize Visualization Performance",
+        "description": "Optimize rendering and interaction performance for all visualizations.",
+        "details": "Profile and optimize D3.js code. Implement virtualization or lazy loading if needed. Ensure smooth user experience.",
+        "testStrategy": "Test performance with large datasets. Verify smooth interaction and rendering.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5,
+          6
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 14,
+        "title": "Implement Navigation and Content Detail Pages",
+        "description": "Build navigation and detail pages for stories, themes, storytellers, and media.",
+        "details": "Create routes and pages for each entity. Display detailed information and related content. Ensure consistent styling with Chakra UI.",
+        "testStrategy": "Test navigation, page rendering, and content display. Verify related content links.",
+        "priority": "medium",
+        "dependencies": [
+          3
+        ],
+        "status": "pending"
+      },
+      {
+        "id": 15,
+        "title": "Prepare for Personalization (Future-Proofing)",
+        "description": "Design architecture to support future personalization features.",
+        "details": "Identify extension points for user preferences and interaction history. Document architecture decisions for future implementation.",
+        "testStrategy": "Review architecture documentation and verify extension points are clear and accessible.",
+        "priority": "low",
+        "dependencies": [],
+        "status": "pending"
+      }
+    ],
+    "metadata": {
+      "created": "2025-06-21T07:55:00.000Z",
+      "updated": "2025-06-21T07:55:00.000Z",
+      "description": "Tasks for Vision V2, generated from vision_v2_prd.md"
+    }
   }
 }
